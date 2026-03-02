@@ -3,7 +3,7 @@ name: Science News for Silke 🔭
 on:
   schedule:
     - cron: '0 7 * * 2,5'  # Every Tuesday and Friday at 07:00 UTC (9am Danish time)
-  workflow_dispatch:        # Also allows manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   send-digest:
@@ -21,9 +21,29 @@ jobs:
       - name: Install dependencies
         run: pip install anthropic
 
+      - name: Check secrets are set
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then echo "❌ ANTHROPIC_API_KEY is not set!"; exit 1; fi
+          if [ -z "$RECIPIENT_EMAIL" ]; then echo "❌ RECIPIENT_EMAIL is not set!"; exit 1; fi
+          if [ -z "$RESEND_API_KEY" ]; then echo "❌ RESEND_API_KEY is not set!"; exit 1; fi
+          echo "✅ All secrets present"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+
       - name: Run digest
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RECIPIENT_EMAIL:   ${{ secrets.RECIPIENT_EMAIL }}
           RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
         run: python digest.py
+
+      - name: Upload digest as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-html
+          path: digest_output.html
+          if-no-files-found: ignore
+
