@@ -2,7 +2,7 @@ name: Science News for Silke 🔭
 
 on:
   schedule:
-    - cron: '0 7 * * 2,5'  # Every Tuesday and Friday at 07:00 UTC (9am Danish time)
+    - cron: '0 7 * * 1,3,5'  # Mon/Wed/Fri at 07:00 UTC (9am Danish time)
   workflow_dispatch:
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install anthropic
+        run: pip install anthropic pyyaml
 
       - name: Check secrets are set
         run: |
@@ -42,10 +42,21 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python digest.py
 
+      - name: Commit keyword stats
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add keyword_stats.json || true
+          git diff --cached --quiet || git commit -m "📊 Update keyword stats [skip ci]"
+          git push || true
+
       - name: Upload digest as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: digest-html
-          path: digest_output.html
+          path: |
+            digest_output.html
+            keyword_stats.json
           if-no-files-found: ignore

@@ -1,0 +1,232 @@
+{
+  "circumbinary": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "circumbinary planet": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Gaia": {
+    "total_hits": 2,
+    "last_hit": "2026-03-02",
+    "runs_checked": 3
+  },
+  "vbroad": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "vsini": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "v sin i": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Gaia DR4": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Gaia DR3": {
+    "total_hits": 2,
+    "last_hit": "2026-03-02",
+    "runs_checked": 3
+  },
+  "LAMOST": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "macroturbulence": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Kraft break": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "stellar rotation": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "rotation velocity": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "rotation period": {
+    "total_hits": 2,
+    "last_hit": "2026-03-02",
+    "runs_checked": 3
+  },
+  "magnetic braking": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "gyrochronology": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "stellar spin-down": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "angular momentum evolution": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Rossby number": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "projected rotational velocity": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "asteroseismic rotation": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "spin-orbit alignment": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "stellar obliquity": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "obliquity": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Rossiter-McLaughlin": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Doppler tomography": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "tidal realignment": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "binary star": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "spectroscopic binary": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "eclipsing binary": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "orbital architecture": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "binary fraction": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "exoplanet demographics": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "radius valley": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "mass-radius relation": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "sub-Neptune": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "water world": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "planet interior": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "hot Jupiter migration": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "high-eccentricity migration": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "tidal dissipation": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "Kozai-Lidov": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "forward model": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "hierarchical Bayesian": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "simulation-based inference": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  },
+  "selection function": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 3
+  }
+}

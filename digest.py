@@ -1,6 +1,7 @@
 """
 Science News for Silke 🔭
 Fetches new arXiv papers, curates them with Claude, and sends a beautiful HTML digest.
+Configuration lives in config.yaml — edit that file to update keywords, colleagues, etc.
 """
 
 import os
@@ -12,50 +13,32 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 import anthropic
+import yaml
 
 # ─────────────────────────────────────────────────────────────
-#  CONFIGURATION
+#  CONFIGURATION (loaded from config.yaml)
 # ─────────────────────────────────────────────────────────────
 
-CONFIG = {
-    "categories": ["astro-ph.EP", "astro-ph.SR", "astro-ph.GA"],
-    "keywords": [
-        # ── Core: circumbinary & Gaia vbroad ──
-        "circumbinary", "circumbinary planet", "Gaia", "vbroad", "vsini",
-        "v sin i", "Gaia DR4", "Gaia DR3", "LAMOST", "macroturbulence",
-        # ── Stellar rotation & Kraft break ──
-        "Kraft break", "stellar rotation", "rotation velocity", "rotation period",
-        "magnetic braking", "gyrochronology", "stellar spin-down",
-        "angular momentum evolution", "Rossby number",
-        "projected rotational velocity", "asteroseismic rotation",
-        # ── Spin-orbit alignment & obliquities ──
-        "spin-orbit alignment", "stellar obliquity", "obliquity",
-        "Rossiter-McLaughlin", "Doppler tomography", "tidal realignment",
-        # ── Binary stars & architecture ──
-        "binary star", "spectroscopic binary", "eclipsing binary",
-        "orbital architecture", "binary fraction",
-        # ── Exoplanet demographics & interiors ──
-        "exoplanet demographics", "radius valley", "mass-radius relation",
-        "sub-Neptune", "water world", "planet interior",
-        # ── Migration & tides ──
-        "hot Jupiter migration", "high-eccentricity migration",
-        "tidal dissipation", "Kozai-Lidov",
-        # ── Methods (astrophysics-specific phrasing) ──
-        "forward model", "hierarchical Bayesian", "simulation-based inference",
-        "selection function",
-    ],
-    "known_authors": [
-        "REDACTED", "Albrecht, S",
-        "REDACTED", "REDACTED", "REDACTED", "REDACTED",
-        "REDACTED", "Nielsen", "Luque",
-    ],
-    "days_back": 5,
-    "max_papers": 8,
-    "min_score": 4,
-    "recipient_email": os.environ.get("RECIPIENT_EMAIL", ""),
-}
+CONFIG_PATH = Path(__file__).parent / "config.yaml"
+STATS_PATH = Path(__file__).parent / "keyword_stats.json"
+
+def load_config():
+    with open(CONFIG_PATH) as f:
+        cfg = yaml.safe_load(f)
+    # Ensure defaults
+    cfg.setdefault("categories", ["astro-ph.EP", "astro-ph.SR", "astro-ph.GA"])
+    cfg.setdefault("keywords", [])
+    cfg.setdefault("research_authors", [])
+    cfg.setdefault("colleagues", [])
+    cfg.setdefault("days_back", 3)
+    cfg.setdefault("max_papers", 8)
+    cfg.setdefault("min_score", 3)
+    cfg["recipient_email"] = os.environ.get("RECIPIENT_EMAIL", "")
+    return cfg
+
 
 
 Silke is a REDACTED,
@@ -70,12 +53,56 @@ REDACTED:
 """
 
 # ─────────────────────────────────────────────────────────────
+#  KEYWORD TRACKING
+# ─────────────────────────────────────────────────────────────
+
+def load_keyword_stats():
+    if STATS_PATH.exists():
+        with open(STATS_PATH) as f:
+            return json.load(f)
+    return {}
+
+
+def save_keyword_stats(stats):
+    with open(STATS_PATH, "w") as f:
+        json.dump(stats, f, indent=2)
+
+
+def update_keyword_stats(papers, config):
+    """Track which keywords matched papers in this run."""
+    stats = load_keyword_stats()
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+
+    for kw in config["keywords"]:
+        if kw not in stats:
+            stats[kw] = {"total_hits": 0, "last_hit": None, "runs_checked": 0}
+        stats[kw]["runs_checked"] += 1
+
+    for paper in papers:
+        text_lower = (paper["title"] + " " + paper["abstract"]).lower()
+        for kw in config["keywords"]:
+            if kw.lower() in text_lower:
+                stats[kw]["total_hits"] += 1
+                stats[kw]["last_hit"] = today
+
+    save_keyword_stats(stats)
+
+    # Report dormant keywords (no hits in 20+ runs)
+    dormant = [kw for kw, s in stats.items()
+               if s["runs_checked"] >= 20 and s["total_hits"] == 0]
+    if dormant:
+        print(f"  💤 Dormant keywords (0 hits in 20+ runs): {', '.join(dormant)}")
+
+    return stats
+
+
+# ─────────────────────────────────────────────────────────────
 #  ARXIV FETCHING
 # ─────────────────────────────────────────────────────────────
 
-def fetch_arxiv_papers(categories, days_back):
+def fetch_arxiv_papers(config):
     papers = []
-    for category in categories:
+    for category in config["categories"]:
         params = {
             "search_query": f"cat:{category}",
             "start": 0,
@@ -94,7 +121,7 @@ def fetch_arxiv_papers(categories, days_back):
 
         root = ET.fromstring(xml_data)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
-        cutoff = datetime.utcnow() - timedelta(days=days_back)
+        cutoff = datetime.utcnow() - timedelta(days=config["days_back"])
 
         for entry in root.findall("atom:entry", ns):
             published_str = entry.find("atom:published", ns).text
@@ -107,15 +134,25 @@ def fetch_arxiv_papers(categories, days_back):
             abstract = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
             authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns)]
 
+            # Check research authors (relevance boost)
             known_flag = []
             for author in authors:
-                for known in CONFIG["known_authors"]:
+                for known in config["research_authors"]:
                     if known.lower() in author.lower():
                         known_flag.append(author)
                         break
 
+            # Check colleagues (always-show)
+            colleague_flag = []
+            for author in authors:
+                for colleague in config["colleagues"]:
+                    for pattern in colleague.get("match", []):
+                        if pattern.lower() in author.lower():
+                            colleague_flag.append(colleague["name"])
+                            break
+
             text_lower = (title + " " + abstract).lower()
-            kw_hits = sum(1 for kw in CONFIG["keywords"] if kw.lower() in text_lower)
+            kw_hits = sum(1 for kw in config["keywords"] if kw.lower() in text_lower)
 
             papers.append({
                 "id": arxiv_id,
@@ -126,9 +163,11 @@ def fetch_arxiv_papers(categories, days_back):
                 "category": category,
                 "url": f"https://arxiv.org/abs/{arxiv_id}",
                 "known_authors": known_flag,
+                "colleague_matches": colleague_flag,
                 "keyword_hits": kw_hits,
             })
 
+    # Deduplicate (same paper may appear in multiple categories)
     seen = set()
     unique = []
     for p in papers:
@@ -136,28 +175,35 @@ def fetch_arxiv_papers(categories, days_back):
             seen.add(p["id"])
             unique.append(p)
 
-    print(f"  Found {len(unique)} papers total")
+    print(f"  Found {len(unique)} papers total (last {config['days_back']} days)")
     return unique
 
 
 def pre_filter(papers):
+    """Keep papers that match keywords or have known authors."""
     filtered = [p for p in papers if p["keyword_hits"] > 0 or p["known_authors"]]
     filtered.sort(key=lambda p: (len(p["known_authors"]) * 5 + p["keyword_hits"]), reverse=True)
+    print(f"   {len(filtered)} matched keywords/authors (sending top 30 to Claude)")
     return filtered[:30]
+
+
+def extract_colleague_papers(papers):
+    """Separate out papers by colleagues — these always show regardless of score."""
+    return [p for p in papers if p.get("colleague_matches")]
 
 
 # ─────────────────────────────────────────────────────────────
 #  CLAUDE ANALYSIS
 # ─────────────────────────────────────────────────────────────
 
-def analyse_papers(papers):
+def analyse_papers(papers, config):
     if not papers:
         return []
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         print("  ⚠️  ANTHROPIC_API_KEY not set — using keyword-only scoring")
-        return _fallback_analyse(papers)
+        return _fallback_analyse(papers, config)
 
     client = anthropic.Anthropic(api_key=api_key)
     analysed = []
@@ -190,7 +236,12 @@ Respond with ONLY a valid JSON object (no markdown, no backticks):
   "new_result": "<2-4 word surprising result tag, or null>"
 }}
 
-Score: 10=circumbinary/Gaia vbroad, 8-9=stellar rotation/binaries, 6-7=related exoplanet science, 4-5=tangential, 1-3=not relevant
+Score generously for this researcher's broad interests:
+10 = core topic (circumbinary planets, Gaia vbroad calibration)
+8-9 = closely related (stellar rotation, binaries, obliquity)
+6-7 = related exoplanet/stellar science she'd want to know about
+4-5 = tangentially interesting
+1-3 = not relevant to her work
 """
 
         try:
@@ -202,6 +253,7 @@ Score: 10=circumbinary/Gaia vbroad, 8-9=stellar rotation/binaries, 6-7=related e
             analysis = json.loads(response.content[0].text.strip())
             paper.update(analysis)
             analysed.append(paper)
+            print(f"    → score: {analysis.get('relevance_score', '?')}")
         except Exception as e:
             print(f"    Error: {e}")
             paper.update({
@@ -215,12 +267,20 @@ Score: 10=circumbinary/Gaia vbroad, 8-9=stellar rotation/binaries, 6-7=related e
             })
             analysed.append(paper)
 
-    result = [p for p in analysed if p.get("relevance_score", 0) >= CONFIG["min_score"]]
+    result = [p for p in analysed if p.get("relevance_score", 0) >= config["min_score"]]
     result.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
-    return result[:CONFIG["max_papers"]]
+
+    # Log what got filtered out
+    dropped = [p for p in analysed if p.get("relevance_score", 0) < config["min_score"]]
+    if dropped:
+        print(f"   Dropped {len(dropped)} papers below score {config['min_score']}:")
+        for p in dropped:
+            print(f"     {p.get('relevance_score', 0)}/10 — {p['title'][:60]}")
+
+    return result[:config["max_papers"]]
 
 
-def _fallback_analyse(papers):
+def _fallback_analyse(papers, config):
     """Keyword-only scoring when API key is unavailable."""
     for p in papers:
         score = min(10, p["keyword_hits"] * 2 + len(p["known_authors"]) * 3)
@@ -235,16 +295,16 @@ def _fallback_analyse(papers):
             "kw_tags": [], "method_tags": [],
             "is_new_catalog": False, "cite_worthy": False, "new_result": None,
         })
-    result = [p for p in papers if p.get("relevance_score", 0) >= CONFIG["min_score"]]
+    result = [p for p in papers if p.get("relevance_score", 0) >= config["min_score"]]
     result.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
-    return result[:CONFIG["max_papers"]]
+    return result[:config["max_papers"]]
 
 
 # ─────────────────────────────────────────────────────────────
 #  HTML RENDERING  (email-safe: inline styles + table layout)
 # ─────────────────────────────────────────────────────────────
 
-def render_html(papers, date_str):
+def render_html(papers, colleague_papers, config, date_str):
 
     def score_bar(score):
         filled = round(score)
@@ -284,7 +344,43 @@ def render_html(papers, date_str):
     def build_method_tags(p):
         return " ".join(f'<span style="{TAG};background:#1f1a10;color:#c9895a">{t}</span>' for t in (p.get("method_tags") or []))
 
-    # Paper cards — email-safe table layout with inline styles
+    # ── Colleague post-it section ────────────────────────────
+    colleague_html = ""
+    if colleague_papers:
+        # Deduplicate by paper ID (colleague might match multiple patterns)
+        seen_ids = set()
+        unique_colleagues = []
+        for p in colleague_papers:
+            if p["id"] not in seen_ids:
+                seen_ids.add(p["id"])
+                unique_colleagues.append(p)
+
+        postits = ""
+        for p in unique_colleagues:
+            names = ", ".join(set(p["colleague_matches"]))
+            authors_short = ", ".join(p["authors"][:3])
+            if len(p["authors"]) > 3:
+                authors_short += f" +{len(p['authors'])-3}"
+            postits += f"""
+        <table width="48%" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:top;margin:6px 1%">
+          <tr><td style="background:#2a2510;border:1px solid #3d3520;border-radius:6px;padding:14px 16px">
+            <div style="font-family:monospace;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:#ecc94b;margin-bottom:6px">&#x1F389; {names}</div>
+            <div style="font-family:sans-serif;font-size:13px;color:#e2e8f0;line-height:1.4;margin-bottom:4px">
+              <a href="{p['url']}" style="color:#e2e8f0;text-decoration:none">{p['title'][:80]}{'...' if len(p['title']) > 80 else ''}</a>
+            </div>
+            <div style="font-family:monospace;font-size:10px;color:#4a5568">{authors_short}</div>
+          </td></tr>
+        </table>"""
+
+        colleague_html = f"""
+  <!-- COLLEAGUE NEWS -->
+  <tr><td style="padding:20px 44px 8px;font-family:monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:#ecc94b">&#x2500;&#x2500; Colleague news &#x1F4EC; &#x2500;&#x2500;</td></tr>
+  <tr><td style="padding:4px 24px 16px">
+    <div style="font-family:Georgia,serif;font-size:12px;color:#4a5568;font-style:italic;margin-bottom:10px">Papers by people you know — send congrats!</div>
+    {postits}
+  </td></tr>"""
+
+    # ── Paper cards ────────────────────────────────────────────
     cards_html = ""
     for i, p in enumerate(papers):
         score = p.get("relevance_score", 5)
@@ -340,11 +436,35 @@ def render_html(papers, date_str):
       </td></tr>
     </table>"""
 
-    if not papers:
+    if not papers and not colleague_papers:
         cards_html = '<div style="text-align:center;padding:60px 24px;color:#4a5568;font-family:Georgia,serif;font-style:italic;font-size:18px">No highly relevant papers this period. The cosmos is quiet. &#x2615;</div>'
 
-    avg_score = round(sum(p.get("relevance_score",0) for p in papers) / max(len(papers),1), 1)
+    avg_score = round(sum(p.get("relevance_score", 0) for p in papers) / max(len(papers), 1), 1)
     known_count = sum(1 for p in papers if p.get("known_authors"))
+    colleague_count = len(set(p["id"] for p in colleague_papers)) if colleague_papers else 0
+
+    # Stats row — show colleague count if any
+    stats_cells = f"""
+        <td style="padding-right:36px">
+          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{len(papers)}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">papers curated</div>
+        </td>
+        <td style="padding-right:36px">
+          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{known_count}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">familiar authors</div>
+        </td>
+        <td style="padding-right:36px">
+          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{avg_score}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">avg relevance</div>
+        </td>"""
+    if colleague_count:
+        stats_cells += f"""
+        <td>
+          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{colleague_count}</div>
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">colleague papers</div>
+        </td>"""
+
+    cats_display = " &middot; ".join(config["categories"])
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -362,26 +482,15 @@ def render_html(papers, date_str):
   <tr><td style="padding:52px 44px 36px;background:#111520;border-bottom:1px solid #1a202c">
     <div style="font-family:monospace;font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:#63b3ed;margin-bottom:14px;opacity:0.75">arXiv &middot; astro-ph &middot; {date_str}</div>
     <div style="font-family:Georgia,serif;font-size:44px;font-weight:700;line-height:1.05;color:#f0f4ff;margin-bottom:6px">Science News<br>for <span style="font-style:italic;color:#ecc94b">Silke</span></div>
-    <div style="font-size:13px;color:#4a5568;font-style:italic;margin-top:10px;font-family:Georgia,serif">Your bi-weekly window into the cosmos &#x2726; curated by Claude</div>
+    <div style="font-size:13px;color:#4a5568;font-style:italic;margin-top:10px;font-family:Georgia,serif">Your window into the cosmos &#x2726; curated by Claude</div>
     <!-- Stats row -->
     <table cellpadding="0" cellspacing="0" border="0" style="margin-top:28px">
-      <tr>
-        <td style="padding-right:36px">
-          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{len(papers)}</div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">papers curated</div>
-        </td>
-        <td style="padding-right:36px">
-          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{known_count}</div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">familiar authors</div>
-        </td>
-        <td>
-          <div style="font-family:Georgia,serif;font-size:32px;color:#ecc94b;line-height:1">{avg_score}</div>
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:0.18em;color:#4a5568;margin-top:3px">avg relevance</div>
-        </td>
-      </tr>
+      <tr>{stats_cells}</tr>
     </table>
-    <div style="margin-top:20px;font-family:monospace;font-size:10px;color:#2d3748;letter-spacing:0.08em;border-top:1px solid #1a202c;padding-top:16px">Monitoring astro-ph.EP &middot; astro-ph.SR &middot; astro-ph.GA &middot; last {CONFIG['days_back']} days &middot; threshold &#x2265; {CONFIG['min_score']}/10</div>
+    <div style="margin-top:20px;font-family:monospace;font-size:10px;color:#2d3748;letter-spacing:0.08em;border-top:1px solid #1a202c;padding-top:16px">Monitoring {cats_display} &middot; last {config['days_back']} days &middot; threshold &#x2265; {config['min_score']}/10</div>
   </td></tr>
+
+  {colleague_html}
 
   <!-- SECTION DIVIDER -->
   <tr><td style="padding:20px 44px 14px;font-family:monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:#2d3748">&#x2500;&#x2500; All papers this edition &middot; {len(papers)} total &#x2500;&#x2500;</td></tr>
@@ -412,13 +521,13 @@ def render_html(papers, date_str):
 #  EMAIL SENDING — Gmail SMTP
 # ─────────────────────────────────────────────────────────────
 
-def send_email(html, paper_count, date_str):
+def send_email(html, paper_count, date_str, config):
     # Always save HTML artifact — useful for debugging and as a backup
     with open("digest_output.html", "w") as f:
         f.write(html)
     print("💾 Saved digest_output.html")
 
-    recipient = CONFIG["recipient_email"]
+    recipient = config["recipient_email"]
     gmail_user = os.environ.get("GMAIL_USER", "").strip()
     gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "").strip()
 
@@ -461,26 +570,41 @@ def main():
     print(f"\n🔭 Science News for Silke — {date_str}")
     print("=" * 50)
 
+    print("\n📋 Loading config.yaml...")
+    config = load_config()
+    print(f"   {len(config['keywords'])} keywords, {len(config['research_authors'])} research authors, {len(config['colleagues'])} colleagues")
+
     print("\n📡 Fetching papers from arXiv...")
-    papers = fetch_arxiv_papers(CONFIG["categories"], CONFIG["days_back"])
+    papers = fetch_arxiv_papers(config)
+
+    # Track keyword performance
+    print("\n📊 Updating keyword stats...")
+    update_keyword_stats(papers, config)
+
+    # Extract colleague papers before filtering (they always show)
+    colleague_papers = extract_colleague_papers(papers)
+    if colleague_papers:
+        names = set()
+        for p in colleague_papers:
+            names.update(p["colleague_matches"])
+        print(f"   🎉 Found {len(colleague_papers)} colleague paper(s): {', '.join(names)}")
 
     print("\n🔍 Pre-filtering...")
     candidates = pre_filter(papers)
-    print(f"   {len(candidates)} candidates")
 
     print("\n🤖 Analysing with Claude...")
-    final_papers = analyse_papers(candidates)
+    final_papers = analyse_papers(candidates, config)
     print(f"   {len(final_papers)} papers made the cut")
 
     print("\n🎨 Rendering HTML...")
-    html = render_html(final_papers, date_str)
+    html = render_html(final_papers, colleague_papers, config, date_str)
 
+    total_count = len(final_papers) + len(set(p["id"] for p in colleague_papers))
     print("\n📧 Sending email...")
-    send_email(html, len(final_papers), date_str)
+    send_email(html, total_count, date_str, config)
 
     print("\n✨ Done!\n")
 
 
 if __name__ == "__main__":
     main()
-
