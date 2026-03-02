@@ -1,0 +1,29 @@
+name: Science News for Silke 🔭
+
+on:
+  schedule:
+    - cron: '0 7 * * 2,5'  # Every Tuesday and Friday at 07:00 UTC (9am Danish time)
+  workflow_dispatch:        # Also allows manual trigger from GitHub UI
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install anthropic
+
+      - name: Run digest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RECIPIENT_EMAIL:   ${{ secrets.RECIPIENT_EMAIL }}
+          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+        run: python digest.py
