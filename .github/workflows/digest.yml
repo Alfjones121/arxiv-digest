@@ -25,18 +25,21 @@ jobs:
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then echo "❌ ANTHROPIC_API_KEY is not set!"; exit 1; fi
           if [ -z "$RECIPIENT_EMAIL" ]; then echo "❌ RECIPIENT_EMAIL is not set!"; exit 1; fi
-          if [ -z "$RESEND_API_KEY" ]; then echo "❌ RESEND_API_KEY is not set!"; exit 1; fi
+          if [ -z "$GMAIL_USER" ]; then echo "❌ GMAIL_USER is not set!"; exit 1; fi
+          if [ -z "$GMAIL_APP_PASSWORD" ]; then echo "❌ GMAIL_APP_PASSWORD is not set!"; exit 1; fi
           echo "✅ All secrets present"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 
       - name: Run digest
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          RECIPIENT_EMAIL:   ${{ secrets.RECIPIENT_EMAIL }}
-          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python digest.py
 
       - name: Upload digest as artifact
@@ -46,4 +49,3 @@ jobs:
           name: digest-html
           path: digest_output.html
           if-no-files-found: ignore
-

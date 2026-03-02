@@ -5,10 +5,13 @@ Fetches new arXiv papers, curates them with Claude, and sends a beautiful HTML d
 
 import os
 import json
+import smtplib
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import anthropic
 
@@ -130,7 +133,12 @@ def analyse_papers(papers):
     if not papers:
         return []
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        print("  ⚠️  ANTHROPIC_API_KEY not set — using keyword-only scoring")
+        return _fallback_analyse(papers)
+
+    client = anthropic.Anthropic(api_key=api_key)
     analysed = []
 
     for i, paper in enumerate(papers):
@@ -187,6 +195,26 @@ Score: 10=circumbinary/Gaia vbroad, 8-9=stellar rotation/binaries, 6-7=related e
             analysed.append(paper)
 
     result = [p for p in analysed if p.get("relevance_score", 0) >= CONFIG["min_score"]]
+    result.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
+    return result[:CONFIG["max_papers"]]
+
+
+def _fallback_analyse(papers):
+    """Keyword-only scoring when API key is unavailable."""
+    for p in papers:
+        score = min(10, p["keyword_hits"] * 2 + len(p["known_authors"]) * 3)
+        p.update({
+            "relevance_score": max(score, 1),
+            "plain_summary": p["abstract"][:300] + "...",
+            "why_interesting": "Matched your keywords." + (
+                f" Known author(s): {', '.join(p['known_authors'])}." if p["known_authors"] else ""
+            ),
+            "emoji": "📄",
+            "highlight_phrase": p["title"][:50],
+            "kw_tags": [], "method_tags": [],
+            "is_new_catalog": False, "cite_worthy": False, "new_result": None,
+        })
+    result = [p for p in papers if p.get("relevance_score", 0) >= CONFIG["min_score"]]
     result.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
     return result[:CONFIG["max_papers"]]
 
@@ -448,7 +476,7 @@ def render_html(papers, date_str):
 
 
 # ─────────────────────────────────────────────────────────────
-#  EMAIL SENDING — Resend API
+#  EMAIL SENDING — Gmail SMTP
 # ─────────────────────────────────────────────────────────────
 
 def send_email(html, paper_count, date_str):
@@ -458,35 +486,36 @@ def send_email(html, paper_count, date_str):
     print("💾 Saved digest_output.html")
 
     recipient = CONFIG["recipient_email"]
-    api_key = os.environ.get("RESEND_API_KEY", "")
+    gmail_user = os.environ.get("GMAIL_USER", "").strip()
+    gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "").strip()
 
-    if not all([recipient, api_key]):
-        print("⚠️  RESEND_API_KEY or RECIPIENT_EMAIL not set — skipping email send.")
+    if not all([recipient, gmail_user, gmail_password]):
+        print("⚠️  GMAIL_USER, GMAIL_APP_PASSWORD, or RECIPIENT_EMAIL not set — skipping email send.")
         return
 
-    payload = json.dumps({
-        "from": "Science News for Silke <onboarding@resend.dev>",
-        "to": [recipient],
-        "subject": f"🔭 Science News for Silke — {paper_count} papers · {date_str}",
-        "html": html,
-    }).encode()
+    subject = f"🔭 Science News for Silke — {paper_count} papers · {date_str}"
 
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="POST"
-    )
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"Science News for Silke <{gmail_user}>"
+    msg["To"] = recipient
+    msg.attach(MIMEText(f"Your arXiv digest for {date_str} — {paper_count} papers. Open in a browser for the full experience.", "plain"))
+    msg.attach(MIMEText(html, "html"))
+
     try:
-        with urllib.request.urlopen(req) as resp:
-            result = json.loads(resp.read())
-            print(f"✅ Email sent to {recipient} (id: {result.get('id')})")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        print(f"❌ Resend API error {e.code}: {body}")
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(gmail_user, gmail_password)
+            server.sendmail(gmail_user, [recipient], msg.as_string())
+        print(f"✅ Email sent to {recipient} via Gmail SMTP")
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌ Gmail auth failed: {e}")
+        print("   Make sure GMAIL_APP_PASSWORD is an App Password, not your regular password.")
+        print("   Generate one at: Google Account > Security > 2-Step Verification > App passwords")
+    except Exception as e:
+        print(f"❌ Email send failed: {e}")
         print("📋 Digest was saved as digest_output.html artifact — check Actions artifacts to download it.")
 
 
