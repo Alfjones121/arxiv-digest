@@ -890,7 +890,10 @@ def _import_profile(result: dict) -> None:
 
     # Extract keywords from publications
     orcid_id = result["url"].rstrip("/").split("/")[-1]
-    keywords, _, _coauthors, error = fetch_orcid_works(orcid_id)
+    keywords, _titles, _coauthor_map, error = fetch_orcid_works(orcid_id)
+    # Persist titles and coauthor map for paper selector and suggested colleagues
+    st.session_state["_orcid_titles"] = _titles or []
+    st.session_state["_orcid_coauthor_map"] = dict(_coauthor_map) if _coauthor_map else {}
     if not error and keywords:
         _apply_orcid_keywords(keywords, orcid_url=result["url"])
     else:
@@ -975,6 +978,9 @@ if "_research_description_val" not in st.session_state:
 # Wizard step tracking — 1-indexed, controls which expander is open
 if "current_step" not in st.session_state:
     st.session_state.current_step = 1
+# Paper selector: subset of fetched ORCID titles to use for keyword/category AI suggestions
+if "selected_papers" not in st.session_state:
+    st.session_state.selected_papers = []
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1118,6 +1124,12 @@ def _commit_preview() -> None:
             if arxiv_pattern not in st.session_state.self_match:
                 st.session_state.self_match.append(arxiv_pattern)
 
+    # Persist paper titles and coauthor map for use in Section 3 (paper selector)
+    # and Section 7 (suggested colleagues). Store even if empty so downstream
+    # code can check without KeyError.
+    st.session_state["_orcid_titles"] = p.get("titles", [])
+    st.session_state["_orcid_coauthor_map"] = p.get("coauthor_map", {})
+
     st.session_state.pure_scanned = True
     st.session_state.orcid_preview = None
 
@@ -1192,6 +1204,8 @@ with st.expander("**1. Your ORCID**", expanded=(st.session_state.current_step ==
                         "titles": titles or [],
                         "au_colleagues": au_colleagues,
                         "all_coauthors": sorted(coauthor_map.values()) if coauthor_map else [],
+                        # Raw coauthor map retained for frequency counting in suggested-colleagues
+                        "coauthor_map": dict(coauthor_map) if coauthor_map else {},
                         "research_summary": research_summary,
                         # Track which colleagues the user wants to import
                         "selected_colleagues": list(au_colleagues),
@@ -1397,6 +1411,27 @@ with st.expander("**3. Your Research Description**", expanded=(st.session_state.
     st.session_state.research_description = research_context_widget
     st.session_state._research_description_val = research_context_widget
 
+    # ── Paper selector: choose which publications inform AI keyword/category suggestions ──
+    _orcid_titles = st.session_state.get("_orcid_titles", [])
+    if _orcid_titles:
+        st.markdown("**Which papers should we use to suggest your keywords?** (select the most representative ones)")
+        st.caption("All fetched from your ORCID profile. Deselect papers from unrelated projects.")
+        _all_selected = st.session_state.selected_papers or list(_orcid_titles)
+        # Trim any stale selections that no longer exist in current titles list
+        _all_selected = [t for t in _all_selected if t in _orcid_titles]
+        if not _all_selected:
+            _all_selected = list(_orcid_titles)
+        _new_selection = st.multiselect(
+            "Papers for keyword suggestions",
+            options=_orcid_titles,
+            default=_all_selected,
+            label_visibility="collapsed",
+            key="paper_selector_widget",
+        )
+        st.session_state.selected_papers = _new_selection
+        if len(_new_selection) < len(_orcid_titles):
+            st.caption(f"{len(_new_selection)} of {len(_orcid_titles)} papers selected.")
+
     # ── AI suggestions: auto-run if description was auto-drafted, else show button ──
     if ai_assist and research_context_widget and len(research_context_widget) > 30:
         _has_orcid_kws = bool(st.session_state.keywords)
@@ -1405,11 +1440,23 @@ with st.expander("**3. Your Research Description**", expanded=(st.session_state.
 
         # Auto-trigger when profile was imported and description was drafted automatically
         _auto_trigger = st.session_state.pure_scanned and not _cats_already_suggested
+
+        # Build enriched context: research description + selected paper titles (if any)
+        _selected_titles = st.session_state.get("selected_papers", [])
+        if _selected_titles:
+            _titles_block = "\n".join(f"- {t}" for t in _selected_titles[:30])
+            _ai_context = (
+                research_context_widget
+                + f"\n\nRepresentative publications:\n{_titles_block}"
+            )
+        else:
+            _ai_context = research_context_widget
+
         if _auto_trigger:
             with st.spinner("Suggesting categories and scoring keywords..."):
-                st.session_state.ai_suggested_cats = suggest_categories(research_context_widget)
+                st.session_state.ai_suggested_cats = suggest_categories(_ai_context)
                 st.session_state.ai_suggested_kws = suggest_keywords_from_context(
-                    research_context_widget,
+                    _ai_context,
                     orcid_keywords=st.session_state.keywords if _has_orcid_kws else None,
                 )
                 if _api_available and _has_orcid_kws:
@@ -1431,9 +1478,9 @@ with st.expander("**3. Your Research Description**", expanded=(st.session_state.
                       else "🤖 Suggest categories & keywords")
             )
             if st.button(_btn_label, type="secondary" if _cats_already_suggested else "primary"):
-                st.session_state.ai_suggested_cats = suggest_categories(research_context_widget)
+                st.session_state.ai_suggested_cats = suggest_categories(_ai_context)
                 st.session_state.ai_suggested_kws = suggest_keywords_from_context(
-                    research_context_widget,
+                    _ai_context,
                     orcid_keywords=st.session_state.keywords if _has_orcid_kws else None,
                 )
                 if _api_available and _has_orcid_kws:
@@ -1705,6 +1752,46 @@ with st.expander("**7. Colleagues**", expanded=(st.session_state.current_step ==
             st.session_state.colleagues_people.pop(idx)
         if to_remove:
             st.rerun()
+
+    # ── Suggested colleagues — top co-authors from ORCID publications ──
+    _cmap = st.session_state.get("_orcid_coauthor_map", {})
+    if _cmap:
+        from collections import Counter as _Counter
+        # Count how many map entries each name appears in (proxy for shared-paper frequency)
+        _name_freq: _Counter = _Counter(_cmap.values())
+        # Remove the user themselves by checking against their profile name
+        _user_name = st.session_state.get("profile_name", "").strip()
+        if _user_name:
+            for _variant in [_user_name, _user_name.lower()]:
+                _name_freq.pop(_variant, None)
+        # Exclude names already in colleagues_people
+        _already_tracked = {c["name"] for c in st.session_state.colleagues_people}
+        _candidates = [
+            (name, count)
+            for name, count in _name_freq.most_common(20)
+            if name not in _already_tracked and name.strip()
+        ]
+        _top_coauthors = _candidates[:5]
+
+        if len(_top_coauthors) >= 2:
+            st.markdown("**Suggested colleagues** — based on your most frequent co-authors:")
+            st.caption("One-click to add them to your People to Track list.")
+            for _ca_name, _ca_count in _top_coauthors:
+                _shared_label = f"{'paper' if _ca_count == 1 else 'papers'}"
+                _col_name, _col_count, _col_btn = st.columns([4, 2, 2])
+                with _col_name:
+                    st.markdown(f"**{_ca_name}**")
+                with _col_count:
+                    st.caption(f"{_ca_count} shared {_shared_label}")
+                with _col_btn:
+                    if st.button("+ Add", key=f"suggest_coll_{_ca_name}", use_container_width=True):
+                        _parts = _ca_name.split()
+                        _match_pat = f"{_parts[-1]}, {_parts[0][0]}" if len(_parts) >= 2 else _ca_name
+                        st.session_state.colleagues_people.append({
+                            "name": _ca_name,
+                            "match": [_match_pat],
+                        })
+                        st.rerun()
 
     st.markdown("**Institutions** (match against abstract text):")
     new_inst = st.text_input("Add institution", placeholder="Aarhus University", key="new_inst_input")
