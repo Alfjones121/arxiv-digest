@@ -5,6 +5,9 @@ on:
     - cron: '0 7 * * 1,3,5'  # Mon/Wed/Fri at 07:00 UTC (9am Danish time)
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   send-digest:
     runs-on: ubuntu-latest
@@ -67,7 +70,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add keyword_stats.json feedback_stats.json || true
+          [ -f keyword_stats.json ] && git add keyword_stats.json || true
+          [ -f feedback_stats.json ] && git add feedback_stats.json || true
           git diff --cached --quiet || git commit -m "📊 Update digest stats [skip ci]"
           git pull --rebase || true
           git push || true
