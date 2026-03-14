@@ -333,7 +333,7 @@ HTML = f"""<!DOCTYPE html>
 
     <header class="header">
       <div class="mark"></div>
-      <div class="kicker">Personal arXiv curator for astronomers</div>
+      <div class="kicker">Personal arXiv curator</div>
     </header>
 
     <section class="layout">
