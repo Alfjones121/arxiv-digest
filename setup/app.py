@@ -688,7 +688,7 @@ else:
     with col_inst:
         pure_search_inst = st.text_input(
             "University (optional)",
-            placeholder="Aarhus University",
+            value="Aarhus University",
             key="pure_search_inst",
             label_visibility="collapsed",
         )
@@ -702,19 +702,18 @@ else:
             )
             st.session_state.pure_confirmed_url = ""
         if not st.session_state.pure_search_results:
-            st.warning("No profile found. Try just your last name, or leave university blank.")
+            st.warning("No profile found. Try just your last name, or clear the university field.")
 
     # ── Multiple results: pick one ──
     if st.session_state.pure_search_results and len(st.session_state.pure_search_results) > 1:
         st.markdown("**More than one match — which is you?**")
         for result in st.session_state.pure_search_results:
-            dept_label = f" — {result['department']}" if result['department'] else ""
-            col_name, col_btn = st.columns([5, 1])
-            with col_name:
-                st.markdown(f"{result['name']}{dept_label}")
-            with col_btn:
-                if st.button("That's me", key=f"pick_{result['url']}", use_container_width=True):
-                    _import_profile(result)
+            orcid_id = result["url"].rstrip("/").split("/")[-1]
+            # Show institution if known, otherwise show ORCID ID so user can verify
+            identifier = result["department"] if result["department"] else f"ORCID: {orcid_id}"
+            btn_label = f"{result['name']} — {identifier}"
+            if st.button(btn_label, key=f"pick_{result['url']}", use_container_width=True):
+                _import_profile(result)
 
     # ── Single result: auto-import immediately ──
     elif st.session_state.pure_search_results and len(st.session_state.pure_search_results) == 1:
