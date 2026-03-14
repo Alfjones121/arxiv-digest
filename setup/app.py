@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -898,6 +899,32 @@ def _import_profile(result: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────
+#  Server-key mode + rate limiting
+# ─────────────────────────────────────────────────────────────
+
+def _has_server_key() -> bool:
+    """True if a Gemini key is baked into Streamlit secrets (server-side)."""
+    try:
+        return bool(st.secrets.get("GEMINI_API_KEY"))
+    except Exception:
+        return False
+
+# Module-level dict: email (lowercased) → unix timestamp of last use.
+# Persists for the lifetime of the Streamlit process (resets on redeploy).
+_DAILY_USAGE: dict[str, float] = {}
+_RATE_LIMIT_SECONDS = 86400  # 24 hours
+
+
+def _is_rate_limited(email: str) -> bool:
+    last = _DAILY_USAGE.get(email.lower().strip(), 0.0)
+    return (time.time() - last) < _RATE_LIMIT_SECONDS
+
+
+def _record_usage(email: str) -> None:
+    _DAILY_USAGE[email.lower().strip()] = time.time()
+
+
+# ─────────────────────────────────────────────────────────────
 #  Session state defaults
 # ─────────────────────────────────────────────────────────────
 
@@ -946,50 +973,70 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Required AI setup ──
-st.markdown("## Choose your AI")
-st.markdown(
-    "AI is used throughout — for finding your profile, suggesting keywords, and scoring papers in your daily digest. "
-    "Your key is only used during this session and never stored."
-)
-
-col_g, col_a = st.columns(2)
-with col_g:
-    st.markdown("**Gemini** — free tier, no credit card")
-    st.text_input(
-        "Gemini API key",
-        type="password",
-        placeholder="AIza...",
-        key="user_gemini_key",
-        label_visibility="collapsed",
-        help="Get a free key at aistudio.google.com",
+# ── AI setup — server key (no user key needed) or bring-your-own ──
+if _has_server_key():
+    # Server has a key — just ask for email for rate limiting
+    st.markdown("## Get started")
+    st.markdown("AI is included — no API key needed. Enter your email to begin.")
+    user_email = st.text_input(
+        "Your email",
+        placeholder="you@university.edu",
+        key="user_email_rl",
     )
-    st.caption("[Get a free key →](https://aistudio.google.com/app/apikey)")
-with col_a:
-    st.markdown("**Anthropic** — Claude")
-    st.text_input(
-        "Anthropic API key",
-        type="password",
-        placeholder="sk-ant-...",
-        key="user_anthropic_key",
-        label_visibility="collapsed",
-        help="Get a key at console.anthropic.com",
-    )
-    st.caption("[Get a key →](https://console.anthropic.com/settings/keys)")
-
-if _ai_available():
-    with st.spinner("Checking key..."):
-        _key_ok, _provider, _key_err = _test_ai_key(
-            _get_gemini_key() or "", _get_anthropic_key() or ""
-        )
-    if _key_ok:
-        st.success(f"AI ready — using {_provider}.")
-    else:
-        st.error(f"Key didn't work: {_key_err}")
+    if not user_email.strip():
         st.stop()
+    if _is_rate_limited(user_email):
+        st.warning(
+            "You've already generated a config today. "
+            "Come back tomorrow, or [get your own free Gemini key](https://aistudio.google.com/app/apikey) to run without limits."
+        )
+        st.stop()
+    _record_usage(user_email)
+    st.success("Ready — AI powered by Gemini.")
 else:
-    st.warning("Enter an API key above to continue. AI is required for profile search and paper scoring.")
-    st.stop()
+    # No server key — user must bring their own
+    st.markdown("## Choose your AI")
+    st.markdown(
+        "AI is used throughout — for finding your profile, suggesting keywords, and scoring papers in your daily digest. "
+        "Your key is only used during this session and never stored."
+    )
+    col_g, col_a = st.columns(2)
+    with col_g:
+        st.markdown("**Gemini** — free tier, no credit card")
+        st.text_input(
+            "Gemini API key",
+            type="password",
+            placeholder="AIza...",
+            key="user_gemini_key",
+            label_visibility="collapsed",
+            help="Get a free key at aistudio.google.com",
+        )
+        st.caption("[Get a free key →](https://aistudio.google.com/app/apikey)")
+    with col_a:
+        st.markdown("**Anthropic** — Claude")
+        st.text_input(
+            "Anthropic API key",
+            type="password",
+            placeholder="sk-ant-...",
+            key="user_anthropic_key",
+            label_visibility="collapsed",
+            help="Get a key at console.anthropic.com",
+        )
+        st.caption("[Get a key →](https://console.anthropic.com/settings/keys)")
+
+    if _ai_available():
+        with st.spinner("Checking key..."):
+            _key_ok, _provider, _key_err = _test_ai_key(
+                _get_gemini_key() or "", _get_anthropic_key() or ""
+            )
+        if _key_ok:
+            st.success(f"AI ready — using {_provider}.")
+        else:
+            st.error(f"Key didn't work: {_key_err}")
+            st.stop()
+    else:
+        st.warning("Enter an API key above to continue. AI is required for profile search and paper scoring.")
+        st.stop()
 
 ai_assist = True  # AI is always on when we reach this point
 
