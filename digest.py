@@ -847,12 +847,6 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
 # ─────────────────────────────────────────────────────────────
 
 def send_email(html, paper_count, date_str, config):
-    # Always save HTML artifact — useful for debugging and as a backup
-    output_path = Path(__file__).parent / "digest_output.html"
-    with open(output_path, "w") as f:
-        f.write(html)
-    print("💾 Saved digest_output.html")
-
     recipient = config["recipient_email"]
 
     # Support both new (SMTP_*) and legacy (GMAIL_*) secret names
@@ -903,8 +897,15 @@ def send_email(html, paper_count, date_str, config):
 # ─────────────────────────────────────────────────────────────
 
 def main():
+    import sys
+    import webbrowser
+
+    preview_mode = "--preview" in sys.argv
+
     date_str = datetime.utcnow().strftime("%B %d, %Y")
     print(f"\n🔭 arXiv Digest — {date_str}")
+    if preview_mode:
+        print("   (preview mode — no email will be sent)")
     print("=" * 50)
 
     print("\n📋 Loading config.yaml...")
@@ -942,8 +943,19 @@ def main():
 
     own_count = len(set(p["id"] for p in own_papers)) if own_papers else 0
     total_count = len(final_papers) + len(set(p["id"] for p in colleague_papers)) + own_count
-    print("\n📧 Sending email...")
-    send_email(html, total_count, date_str, config)
+
+    # Save HTML artifact (always)
+    output_path = Path(__file__).parent / "digest_output.html"
+    with open(output_path, "w") as f:
+        f.write(html)
+
+    if preview_mode:
+        print(f"\n👀 Preview saved to {output_path}")
+        webbrowser.open(f"file://{output_path.resolve()}")
+        print("   Opened in your browser. No email sent.")
+    else:
+        print("\n📧 Sending email...")
+        send_email(html, total_count, date_str, config)
 
     print("\n✨ Done!\n")
 
