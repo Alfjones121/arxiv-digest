@@ -794,7 +794,7 @@ def _keyword_regex_fallback(text: str) -> dict[str, int]:
                 candidates[trigram] = 9
 
     generic = {"et al", "ground based", "non linear"}
-    return {k: v for k, v in sorted(candidates.items(), key=lambda x: -x[1])[:15]
+    return {k: v for k, v in sorted(candidates.items(), key=lambda x: -x[1])[:25]
             if k.lower() not in generic}
 
 
@@ -824,8 +824,8 @@ def suggest_keywords_from_context(text: str, orcid_keywords: dict | None = None)
         "Score each keyword's relevance to this researcher's specific field on a scale of 1–10. "
         "Prefer specific technical terms over generic words. Generic words that happen to appear "
         "in paper titles (like 'water', 'worlds', 'population') should score low unless they are "
-        "genuinely central to this specific research. Return ONLY a JSON object mapping each "
-        "keyword to its integer score. No other text."
+        "genuinely central to this specific research. Return at most 25 keywords. "
+        "Return ONLY a JSON object mapping each keyword to its integer score. No other text."
     )
 
     raw = _call_ai(prompt)
@@ -838,7 +838,7 @@ def suggest_keywords_from_context(text: str, orcid_keywords: dict | None = None)
         return dict(sorted(
             {k: max(1, min(10, int(v))) for k, v in scored.items()}.items(),
             key=lambda x: -x[1],
-        )[:15])
+        )[:25])
     except Exception:
         return _keyword_regex_fallback(text)
 
@@ -854,11 +854,15 @@ def _apply_orcid_keywords(keywords: dict, orcid_url: str = "") -> None:
         merged.update(keywords)
         st.session_state.keywords = merged
         if not st.session_state.research_description:
-            api_key = _get_anthropic_key()
-            if api_key and _ANTHROPIC_AVAILABLE:
+            if _ai_available():
                 _drafted = draft_research_description(merged)
+            else:
+                _top_kws = [k for k, _ in sorted(merged.items(), key=lambda x: -x[1])[:5]]
+                _drafted = f"My research focuses on {', '.join(_top_kws)}." if _top_kws else ""
+            if _drafted:
                 st.session_state.research_description = _drafted
                 st.session_state._research_description_val = _drafted
+                st.session_state["research_description_widget"] = _drafted
     st.session_state.pure_scanned = True
     if orcid_url:
         st.session_state.pure_confirmed_url = orcid_url
@@ -1093,16 +1097,40 @@ def _commit_preview() -> None:
         merged.update(p["keywords"])
         st.session_state.keywords = merged
 
-    # Research description: prefer the AI summary from titles; fall back to keywords.
-    # Write to both the backing store and the widget-shadow key so the text_area
-    # renders the fetched content after rerun.
-    if p.get("research_summary") and not st.session_state.research_description:
-        st.session_state.research_description = p["research_summary"]
-        st.session_state._research_description_val = p["research_summary"]
-    elif p["keywords"] and not st.session_state.research_description:
-        drafted = draft_research_description(p["keywords"])
-        st.session_state.research_description = drafted
-        st.session_state._research_description_val = drafted
+    # Research description: prefer the AI summary from titles; fall back to keywords;
+    # final fallback is a simple sentence built from the top-5 title words.
+    # Write to ALL three keys: the backing store, the shadow key, AND the widget's
+    # own session-state key — because Streamlit ignores value= after the first render
+    # and reads st.session_state["research_description_widget"] directly.
+    if not st.session_state.research_description:
+        _drafted = ""
+        if p.get("research_summary"):
+            _drafted = p["research_summary"]
+        elif p["keywords"]:
+            _drafted = draft_research_description(p["keywords"])
+        elif p.get("titles"):
+            # No AI and no keywords: build a minimal fallback from paper titles.
+            _top_titles = p["titles"][:5]
+            _words = []
+            _stopwords = {"a", "an", "the", "of", "in", "on", "at", "to", "for",
+                          "and", "or", "with", "from", "by", "is", "are", "using"}
+            for _t in _top_titles:
+                for _w in _t.split():
+                    _clean = re.sub(r"[^a-zA-Z\-]", "", _w)
+                    if len(_clean) > 4 and _clean.lower() not in _stopwords:
+                        _words.append(_clean)
+            _unique = list(dict.fromkeys(_words))[:6]  # preserve order, dedupe
+            if _unique:
+                _drafted = (
+                    f"My research focuses on {', '.join(_unique[:-1])}, and {_unique[-1]}. "
+                    f"These topics span my recent publications in areas including "
+                    f"{', '.join(w.lower() for w in _unique[:3])}."
+                )
+        if _drafted:
+            st.session_state.research_description = _drafted
+            st.session_state._research_description_val = _drafted
+            # Also write to the widget key directly so Streamlit renders it after rerun
+            st.session_state["research_description_widget"] = _drafted
 
     # Add confirmed AU colleagues
     for name in p.get("selected_colleagues", []):
