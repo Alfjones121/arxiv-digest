@@ -103,6 +103,8 @@ The digest uses a waterfall strategy for scoring papers:
 
 Set `ANTHROPIC_API_KEY` and/or `GEMINI_API_KEY` in your repo secrets. The digest automatically uses the best available — if Claude runs out of credits, it cascades to Gemini, then to keyword-only scoring. No money goes to the creator of this tool; API costs go directly to Anthropic/Google for the AI scoring.
 
+> **Shared key note:** Your fork may come with a shared Gemini API key so that AI scoring works out of the box. This is a community courtesy — it works, but may be slower when many digests run at the same time. For the best experience, get your own free [Gemini API key](https://aistudio.google.com/apikey) and add it as `GEMINI_API_KEY` in your repo secrets. Once you add your own key, set `own_api_key: true` in your `config.yaml` to remove the reminder from your digest emails.
+
 ### How papers are scored
 
 Whether you use AI or keyword-only scoring, the algorithm works the same way underneath:

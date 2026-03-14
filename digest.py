@@ -82,6 +82,7 @@ def load_config() -> dict[str, Any]:
     cfg.setdefault("recipient_view_mode", "deep_read")  # "deep_read" or "5_min_skim"
     cfg.setdefault("self_match", [])  # patterns to match YOUR name in author lists
     cfg.setdefault("keyword_aliases", {})  # optional keyword -> [similar phrases]
+    cfg.setdefault("own_api_key", False)  # set True when user adds their own AI key
 
     # ── Existing fields with defaults ──
     cfg.setdefault("categories", ["astro-ph.EP", "astro-ph.SR", "astro-ph.GA"])
@@ -1291,6 +1292,23 @@ def _render_header(papers: list[dict[str, Any]], colleague_papers: list[dict[str
   </td></tr>"""
 
 
+def _render_own_key_nudge(config: dict[str, Any], scoring_method: str) -> str:
+    """Gentle nudge to get your own API key if using the shared community key."""
+    if config.get("own_api_key"):
+        return ""
+    if scoring_method not in {"claude", "gemini", "keywords_fallback", "gemini_rate_limited"}:
+        return ""
+    github_repo = config.get("github_repo", "")
+    secrets_url = f"https://github.com/{github_repo}/settings/secrets/actions" if github_repo else ""
+    secrets_link = f' <a href="{secrets_url}" style="color:{PINE};text-decoration:none">Add it to your repo secrets</a> &rarr;' if secrets_url else ""
+    return f"""
+  <tr><td style="padding:8px 44px 0">
+    <div style="background:{PINE_WASH};border:1px solid {CARD_BORDER};border-radius:6px;padding:12px 18px;font-family:'IBM Plex Sans',sans-serif;font-size:11px;color:{WARM_GREY};text-align:center">
+      &#x1F511; You are using a shared AI key — it works, but may be slower when many people run their digests at the same time. Get your own free <a href="https://aistudio.google.com/apikey" style="color:{PINE};text-decoration:none">Gemini API key</a> for faster, more reliable scoring.{secrets_link}
+    </div>
+  </td></tr>"""
+
+
 def _render_footer(config: dict[str, Any], scoring_method: str) -> str:
     """Return the email footer HTML including self-service links and credits."""
     digest_name = config.get("digest_name", "arXiv Digest")
@@ -1428,6 +1446,8 @@ def render_html(papers: list[dict[str, Any]], colleague_papers: list[dict[str, A
   </td></tr>
 
   {_render_scoring_notice(scoring_method)}
+
+  {_render_own_key_nudge(config, scoring_method)}
 """
         + _render_footer(config, scoring_method)
         + """

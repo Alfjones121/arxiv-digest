@@ -108,6 +108,7 @@ smtp_port: 587
 
 # ── Advanced (optional) ──────────────────────
 # claude_model: "claude-sonnet-4-20250514"  # pin a specific Claude model version
+# own_api_key: true   # set to true once you add your own GEMINI_API_KEY or ANTHROPIC_API_KEY
 
 # ── Your Repository ───────────────────────────
 # Used for self-service links in emails (edit config, pause digest)
