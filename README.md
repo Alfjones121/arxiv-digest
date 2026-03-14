@@ -4,6 +4,12 @@
 
 Created by [Silke S. Dainese](https://silkedainese.github.io) · [dainese@phys.au.dk](mailto:dainese@phys.au.dk) · [ORCID](https://orcid.org/0009-0001-7885-2439)
 
+I built this for myself. I am a PhD student in astronomy at Aarhus University — not a software developer — and I wanted a smarter way to stay on top of new arXiv papers without spending an hour every morning. Other people in my department found it useful, so I cleaned it up and made it public. It is primarily aimed at people in physics and astronomy, but it will work for anyone on arXiv.
+
+If you have suggestions, open an issue or email me. I cannot promise to implement them — my research comes first.
+
+*Built with the help of Claude Opus and Sonnet 4.6.*
+
 ---
 
 ## Quick Start (5 minutes)
@@ -93,6 +99,16 @@ The digest uses a waterfall strategy for scoring papers:
 | 3 | **Keyword fallback** | Basic | Free, no API needed |
 
 Set `ANTHROPIC_API_KEY` and/or `GEMINI_API_KEY` in your repo secrets. The digest automatically uses the best available — if Claude runs out of credits, it cascades to Gemini, then to keyword-only scoring. No money goes to the creator of this tool; API costs go directly to Anthropic/Google for the AI scoring.
+
+### How papers are scored
+
+Whether you use AI or keyword-only scoring, the algorithm works the same way underneath:
+
+1. **Keyword matching** — your keywords are checked against each paper's title and abstract, weighted by the importance you assigned them (1–10).
+2. **Normalization** — scores are normalized across the day's papers so the ranking reflects relative relevance, not raw counts.
+3. **Self-citation boost** — papers that cite your work, or papers you have authored yourself, receive a relevance boost. You can toggle this on or off in your config.
+
+When AI scoring is active (Claude or Gemini), it reads your `research_context` and re-ranks papers using that description in addition to keywords. This is why a good `research_context` matters — the more specific you are, the better the scoring.
 
 ---
 

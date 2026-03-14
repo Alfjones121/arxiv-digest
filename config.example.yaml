@@ -66,8 +66,8 @@ digest_mode: "highlights"
 # ── Settings ───────────────────────────────────
 days_back: 4          # how many days to look back (4 covers weekend gaps)
 # max_papers and min_score are auto-set by digest_mode, but you can override:
-# max_papers: 8       # max papers in the main digest
-# min_score: 3        # minimum AI relevance score (1-10)
+# max_papers: 8       # max papers in the main digest (highlights=6, in_depth=15)
+# min_score: 3        # minimum AI relevance score 1-10 (highlights=5, in_depth=2)
 
 # ── Schedule (metadata only) ─────────────────
 # These fields are NOT used at runtime — digest.py ignores them.

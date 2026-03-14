@@ -7,10 +7,16 @@ Created by Silke S. Dainese · dainese@phys.au.dk · silkedainese.github.io
 """
 
 import re
+import sys
+from pathlib import Path
 
 import yaml
 import streamlit as st
 
+# Allow imports from the project root (one level up from setup/)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from brand import PINE, GOLD, CARD_BORDER, WARM_GREY
 from pure_scraper import scrape_pure_profile, search_pure_profiles
 
 # ─────────────────────────────────────────────────────────────
@@ -24,32 +30,32 @@ st.set_page_config(
 )
 
 # ── Custom CSS for brand styling ──
-st.markdown("""
+st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@300;400;600&family=DM+Mono:wght@400&display=swap');
 
-    h1, h2, h3 { font-family: 'DM Serif Display', Georgia, serif !important; }
-    .stMarkdown p, .stMarkdown li { font-family: 'IBM Plex Sans', sans-serif; }
-    code, .stCode { font-family: 'DM Mono', monospace !important; }
+    h1, h2, h3 {{ font-family: 'DM Serif Display', Georgia, serif !important; }}
+    .stMarkdown p, .stMarkdown li {{ font-family: 'IBM Plex Sans', sans-serif; }}
+    code, .stCode {{ font-family: 'DM Mono', monospace !important; }}
 
     /* Brand card styling */
-    .brand-card {
+    .brand-card {{
         background: white;
-        border: 1px solid #D8D6D0;
+        border: 1px solid {CARD_BORDER};
         border-radius: 6px;
         padding: 24px;
         margin: 12px 0;
-    }
-    .brand-label {
+    }}
+    .brand-label {{
         font-family: 'DM Mono', monospace;
         font-size: 10px;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #6A6A66;
-    }
-    .step-number {
+        color: {WARM_GREY};
+    }}
+    .step-number {{
         display: inline-block;
-        background: #2F4F3E;
+        background: {PINE};
         color: white;
         width: 28px;
         height: 28px;
@@ -59,7 +65,7 @@ st.markdown("""
         font-family: 'DM Mono', monospace;
         font-size: 14px;
         margin-right: 8px;
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,43 +75,151 @@ st.markdown("""
 # ─────────────────────────────────────────────────────────────
 
 ARXIV_CATEGORIES = {
+    # Astrophysics
     "astro-ph.EP": "Earth and Planetary Astrophysics",
     "astro-ph.SR": "Solar and Stellar Astrophysics",
     "astro-ph.GA": "Astrophysics of Galaxies",
     "astro-ph.CO": "Cosmology and Nongalactic Astrophysics",
     "astro-ph.HE": "High Energy Astrophysical Phenomena",
     "astro-ph.IM": "Instrumentation and Methods",
-    "hep-th": "High Energy Physics — Theory",
-    "hep-ph": "High Energy Physics — Phenomenology",
-    "hep-ex": "High Energy Physics — Experiment",
-    "gr-qc": "General Relativity and Quantum Cosmology",
-    "cond-mat": "Condensed Matter",
-    "cond-mat.str-el": "Strongly Correlated Electrons",
+    # Condensed Matter
+    "cond-mat.dis-nn": "Disordered Systems and Neural Networks",
+    "cond-mat.mes-hall": "Mesoscale and Nanoscale Physics",
     "cond-mat.mtrl-sci": "Materials Science",
+    "cond-mat.other": "Other Condensed Matter",
+    "cond-mat.quant-gas": "Quantum Gases",
+    "cond-mat.soft": "Soft Condensed Matter",
     "cond-mat.stat-mech": "Statistical Mechanics",
-    "quant-ph": "Quantum Physics",
+    "cond-mat.str-el": "Strongly Correlated Electrons",
+    "cond-mat.supr-con": "Superconductivity",
+    # General Relativity & Quantum Cosmology
+    "gr-qc": "General Relativity and Quantum Cosmology",
+    # High Energy Physics
+    "hep-ex": "High Energy Physics — Experiment",
+    "hep-lat": "High Energy Physics — Lattice",
+    "hep-ph": "High Energy Physics — Phenomenology",
+    "hep-th": "High Energy Physics — Theory",
+    # Mathematical Physics
+    "math-ph": "Mathematical Physics",
+    # Nonlinear Sciences
+    "nlin.AO": "Adaptation and Self-Organizing Systems",
+    "nlin.CD": "Chaotic Dynamics",
+    "nlin.CG": "Cellular Automata and Lattice Gases",
+    "nlin.PS": "Pattern Formation and Solitons",
+    "nlin.SI": "Exactly Solvable and Integrable Systems",
+    # Nuclear
+    "nucl-ex": "Nuclear Experiment",
     "nucl-th": "Nuclear Theory",
-    "physics.optics": "Optics",
+    # Physics
+    "physics.acc-ph": "Accelerator Physics",
+    "physics.ao-ph": "Atmospheric and Oceanic Physics",
     "physics.atom-ph": "Atomic Physics",
+    "physics.atm-clus": "Atomic and Molecular Clusters",
     "physics.bio-ph": "Biological Physics",
-    "physics.flu-dyn": "Fluid Dynamics",
-    "physics.plasm-ph": "Plasma Physics",
-    "physics.geo-ph": "Geophysics",
+    "physics.chem-ph": "Chemical Physics",
+    "physics.class-ph": "Classical Physics",
     "physics.comp-ph": "Computational Physics",
     "physics.data-an": "Data Analysis, Statistics and Probability",
+    "physics.ed-ph": "Physics Education",
+    "physics.flu-dyn": "Fluid Dynamics",
+    "physics.gen-ph": "General Physics",
+    "physics.geo-ph": "Geophysics",
+    "physics.hist-ph": "History and Philosophy of Physics",
+    "physics.ins-det": "Instrumentation and Detectors",
+    "physics.med-ph": "Medical Physics",
+    "physics.optics": "Optics",
+    "physics.plasm-ph": "Plasma Physics",
+    "physics.pop-ph": "Popular Physics",
+    "physics.soc-ph": "Physics and Society",
+    "physics.space-ph": "Space Physics",
+    # Quantum Physics
+    "quant-ph": "Quantum Physics",
+    # Computer Science
     "cs.AI": "Artificial Intelligence",
-    "cs.LG": "Machine Learning",
-    "cs.CV": "Computer Vision",
     "cs.CL": "Computation and Language (NLP)",
+    "cs.CV": "Computer Vision",
+    "cs.DS": "Data Structures and Algorithms",
+    "cs.LG": "Machine Learning",
+    "cs.NE": "Neural and Evolutionary Computing",
     "cs.RO": "Robotics",
-    "math.AP": "Analysis of PDEs",
+    # Mathematics
     "math.AG": "Algebraic Geometry",
+    "math.AP": "Analysis of PDEs",
     "math.DG": "Differential Geometry",
+    "math.DS": "Dynamical Systems",
+    "math.NT": "Number Theory",
     "math.PR": "Probability",
-    "stat.ML": "Machine Learning (Statistics)",
+    "math.ST": "Statistics Theory",
+    # Statistics
+    "stat.AP": "Applications (Statistics)",
+    "stat.CO": "Computation (Statistics)",
     "stat.ME": "Methodology (Statistics)",
+    "stat.ML": "Machine Learning (Statistics)",
+    "stat.TH": "Statistics Theory",
+    # Electrical Engineering
+    "eess.AS": "Audio and Speech Processing",
+    "eess.IV": "Image and Video Processing",
     "eess.SP": "Signal Processing",
-    "q-bio": "Quantitative Biology",
+    "eess.SY": "Systems and Control",
+    # Quantitative Biology
+    "q-bio.BM": "Biomolecules",
+    "q-bio.CB": "Cell Behavior",
+    "q-bio.GN": "Genomics",
+    "q-bio.NC": "Neurons and Cognition",
+    "q-bio.PE": "Populations and Evolution",
+    "q-bio.QM": "Quantitative Methods",
+}
+
+# Hierarchical grouping for the category picker UI
+ARXIV_GROUPS = {
+    "Astrophysics": [
+        "astro-ph.EP", "astro-ph.SR", "astro-ph.GA",
+        "astro-ph.CO", "astro-ph.HE", "astro-ph.IM",
+    ],
+    "Condensed Matter": [
+        "cond-mat.dis-nn", "cond-mat.mes-hall", "cond-mat.mtrl-sci",
+        "cond-mat.other", "cond-mat.quant-gas", "cond-mat.soft",
+        "cond-mat.stat-mech", "cond-mat.str-el", "cond-mat.supr-con",
+    ],
+    "General Relativity & Quantum Cosmology": ["gr-qc"],
+    "High Energy Physics": ["hep-ex", "hep-lat", "hep-ph", "hep-th"],
+    "Mathematical Physics": ["math-ph"],
+    "Nonlinear Sciences": ["nlin.AO", "nlin.CD", "nlin.CG", "nlin.PS", "nlin.SI"],
+    "Nuclear Physics": ["nucl-ex", "nucl-th"],
+    "Physics": [
+        "physics.acc-ph", "physics.ao-ph", "physics.atom-ph", "physics.atm-clus",
+        "physics.bio-ph", "physics.chem-ph", "physics.class-ph", "physics.comp-ph",
+        "physics.data-an", "physics.ed-ph", "physics.flu-dyn", "physics.gen-ph",
+        "physics.geo-ph", "physics.hist-ph", "physics.ins-det", "physics.med-ph",
+        "physics.optics", "physics.plasm-ph", "physics.pop-ph", "physics.soc-ph",
+        "physics.space-ph",
+    ],
+    "Quantum Physics": ["quant-ph"],
+    "Computer Science": ["cs.AI", "cs.CL", "cs.CV", "cs.DS", "cs.LG", "cs.NE", "cs.RO"],
+    "Mathematics": ["math.AG", "math.AP", "math.DG", "math.DS", "math.NT", "math.PR", "math.ST"],
+    "Statistics": ["stat.AP", "stat.CO", "stat.ME", "stat.ML", "stat.TH"],
+    "Electrical Engineering": ["eess.AS", "eess.IV", "eess.SP", "eess.SY"],
+    "Quantitative Biology": [
+        "q-bio.BM", "q-bio.CB", "q-bio.GN", "q-bio.NC", "q-bio.PE", "q-bio.QM",
+    ],
+}
+
+# "Include if" hints — shown inside each group expander
+ARXIV_GROUP_HINTS = {
+    "Astrophysics": "You study stars, planets, galaxies, or cosmic phenomena.",
+    "Condensed Matter": "You study materials, superconductors, or quantum systems in matter.",
+    "General Relativity & Quantum Cosmology": "You work on spacetime, black holes, or gravitational waves.",
+    "High Energy Physics": "You work on particles, colliders, or fundamental field theory.",
+    "Mathematical Physics": "You bridge rigorous mathematics and physical theory.",
+    "Nonlinear Sciences": "You study chaos, complex systems, or emergent patterns.",
+    "Nuclear Physics": "You study atomic nuclei, nuclear reactions, or related theory.",
+    "Physics": "You work in applied or specialized sub-fields of physics.",
+    "Quantum Physics": "You work on quantum information, computing, or quantum optics.",
+    "Computer Science": "You use or develop AI, ML, NLP, vision, or robotics methods.",
+    "Mathematics": "You work in pure or applied mathematics.",
+    "Statistics": "You work on statistical methods, ML theory, or data analysis.",
+    "Electrical Engineering": "You process signals, audio, images, or design control systems.",
+    "Quantitative Biology": "You apply quantitative methods to biological systems.",
 }
 
 # Terms that hint at which arXiv categories to suggest
@@ -298,10 +412,10 @@ Set up your personal arXiv digest in 5 minutes. This wizard generates a `config.
 that you drop into your GitHub fork — then you'll get curated papers delivered to your inbox.
 """)
 
-st.markdown("""
+st.markdown(f"""
 <div style="font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.1em;
-     text-transform: uppercase; color: #6A6A66; margin-top: -8px; margin-bottom: 24px;">
-     Built by <a href="https://silkedainese.github.io" style="color: #2F4F3E;">Silke S. Dainese</a>
+     text-transform: uppercase; color: {WARM_GREY}; margin-top: -8px; margin-bottom: 24px;">
+     Built by <a href="https://silkedainese.github.io" style="color: {PINE};">Silke S. Dainese</a>
 </div>
 """, unsafe_allow_html=True)
 
@@ -512,32 +626,87 @@ st.divider()
 
 st.markdown("## 4. arXiv Categories")
 
-category_options = [f"{k} — {v}" for k, v in ARXIV_CATEGORIES.items()]
+# Build set of AI-suggested categories for pre-selection
+ai_suggested_set = set(st.session_state.ai_suggested_cats) if ai_assist else set()
 
-if ai_assist and st.session_state.ai_suggested_cats:
-    st.markdown("**Suggested based on your research description** — edit as needed:")
-    # Pre-select the AI-suggested categories
-    suggested_defaults = [
-        f"{cat} — {ARXIV_CATEGORIES[cat]}"
-        for cat in st.session_state.ai_suggested_cats
-        if cat in ARXIV_CATEGORIES
-    ]
-    selected_cats = st.multiselect(
-        "Categories",
-        options=category_options,
-        default=suggested_defaults,
-        label_visibility="collapsed",
+# Track which categories the user has selected across all groups
+if "selected_categories" not in st.session_state:
+    st.session_state.selected_categories = set(ai_suggested_set)
+
+# If AI suggestions just arrived, merge them into the selection
+if ai_suggested_set and not st.session_state.selected_categories.issuperset(ai_suggested_set):
+    st.session_state.selected_categories.update(ai_suggested_set)
+
+if ai_assist and ai_suggested_set:
+    st.success(
+        f"AI suggested {len(ai_suggested_set)} categories based on your research description. "
+        f"They are pre-selected below — review and adjust as needed."
+    )
+
+st.markdown(
+    "Pick the arXiv groups you want to monitor, then choose sub-categories within each group. "
+    "Each group header shows a hint for when to include it."
+)
+
+# ── Group-level hierarchical picker ──
+to_add = set()
+to_remove = set()
+
+for group_name, group_cats in ARXIV_GROUPS.items():
+    selected_in_group = [c for c in group_cats if c in st.session_state.selected_categories]
+    n_selected = len(selected_in_group)
+    n_total = len(group_cats)
+    hint = ARXIV_GROUP_HINTS.get(group_name, "")
+
+    count_label = f"{n_selected}/{n_total} selected" if n_selected > 0 else ""
+    with st.expander(
+        f"**{group_name}**" + (f" — {count_label}" if count_label else ""),
+        expanded=(n_selected > 0),
+    ):
+        if hint:
+            st.caption(f"Include if: {hint}")
+
+        col_all, col_none, col_spacer = st.columns([1, 1, 4])
+        with col_all:
+            if st.button("Select all", key=f"grp_all_{group_name}", use_container_width=True):
+                to_add.update(group_cats)
+        with col_none:
+            if st.button("Clear", key=f"grp_none_{group_name}", use_container_width=True):
+                to_remove.update(group_cats)
+
+        for cat_id in group_cats:
+            label = ARXIV_CATEGORIES.get(cat_id, cat_id)
+            is_selected = cat_id in st.session_state.selected_categories
+            # ✦ marks AI-suggested categories (Unicode, not an emoji)
+            display_label = f"{label} \u2726" if cat_id in ai_suggested_set else label
+            checked = st.checkbox(
+                display_label,
+                value=is_selected,
+                key=f"cat_{cat_id}",
+                help=f"`{cat_id}`" + (" — AI suggested" if cat_id in ai_suggested_set else ""),
+            )
+            if checked and not is_selected:
+                to_add.add(cat_id)
+            elif not checked and is_selected:
+                to_remove.add(cat_id)
+
+# Apply batch updates after the loop (avoids mid-loop state mutations)
+if to_add or to_remove:
+    st.session_state.selected_categories = (
+        st.session_state.selected_categories | to_add
+    ) - to_remove
+    st.rerun()
+
+# Final categories list — flat list of strings for config output
+categories = sorted(st.session_state.selected_categories)
+
+if categories:
+    st.markdown(
+        f"**{len(categories)} categories selected:** "
+        + ", ".join(f"`{c}`" for c in categories)
     )
 else:
-    st.markdown("Which arXiv categories should the digest monitor? Pick the ones relevant to your field.")
-    selected_cats = st.multiselect(
-        "Categories",
-        options=category_options,
-        default=[],
-        label_visibility="collapsed",
-    )
-
-categories = [c.split(" — ")[0] for c in selected_cats]
+    st.info("No categories selected yet. Expand a group above to choose.")
 
 st.divider()
 
@@ -821,7 +990,7 @@ config = {
     "digest_name": digest_name or "arXiv Digest",
     "researcher_name": researcher_name or "Reader",
     "research_context": research_context or "",
-    "categories": categories if categories else ["astro-ph.EP"],
+    "categories": categories if categories else ["astro-ph.EP", "astro-ph.SR", "astro-ph.GA", "astro-ph.HE", "astro-ph.IM"],
     "keywords": dict(st.session_state.keywords) if st.session_state.keywords else {"example keyword": 5},
     "self_match": list(st.session_state.self_match),
     "research_authors": list(st.session_state.research_authors),
@@ -888,7 +1057,7 @@ st.markdown("## Next Steps")
 schedule_note = ""
 if schedule != "mon_wed_fri" or send_hour_utc != 7:
     schedule_note = f"""
-<div class="brand-card" style="border-left: 4px solid #EBC944;">
+<div class="brand-card" style="border-left: 4px solid {GOLD};">
 <p>⚠️ <strong>Update your schedule</strong></p>
 <p style="margin-left: 36px;">
 Since you chose <strong>{schedule_options[schedule]} at {send_hour_utc}:00 UTC</strong>, open
@@ -902,7 +1071,7 @@ st.markdown(f"""
 <div class="brand-card">
 <p><span class="step-number">1</span> <strong>Fork the template repo</strong></p>
 <p style="margin-left: 36px;">
-Go to <a href="https://github.com/SilkeDainese/arxiv-digest" style="color: #2F4F3E;">github.com/SilkeDainese/arxiv-digest</a>
+Go to <a href="https://github.com/SilkeDainese/arxiv-digest" style="color: {PINE};">github.com/SilkeDainese/arxiv-digest</a>
 and click <strong>Fork</strong>.
 </p>
 </div>
@@ -921,7 +1090,7 @@ you just downloaded. It will replace the example config.
 Go to your fork's <strong>Settings → Secrets and variables → Actions</strong> and add:<br>
 <code>RECIPIENT_EMAIL</code> — your email address<br>
 <code>SMTP_USER</code> — your Gmail/Outlook address<br>
-<code>SMTP_PASSWORD</code> — an App Password (<a href="https://myaccount.google.com/apppasswords" style="color: #2F4F3E;">Gmail</a> or <a href="https://account.microsoft.com/security" style="color: #2F4F3E;">Microsoft</a>)<br>
+<code>SMTP_PASSWORD</code> — an App Password (<a href="https://myaccount.google.com/apppasswords" style="color: {PINE};">Gmail</a> or <a href="https://account.microsoft.com/security" style="color: {PINE};">Microsoft</a>)<br>
 <em>Optional:</em> <code>ANTHROPIC_API_KEY</code> or <code>GEMINI_API_KEY</code> for AI scoring
 </p>
 </div>
@@ -934,11 +1103,11 @@ st.success(f"That's it! Your digest will run {schedule_options[schedule].lower()
 st.divider()
 
 # ── Footer ──
-st.markdown("""
+st.markdown(f"""
 <div style="text-align: center; font-family: 'DM Mono', monospace; font-size: 10px;
-     letter-spacing: 0.1em; color: #6A6A66; margin-top: 24px; margin-bottom: 24px;">
-     Built by <a href="https://silkedainese.github.io" style="color: #2F4F3E;">Silke S. Dainese</a> ·
-     <a href="mailto:dainese@phys.au.dk" style="color: #6A6A66;">dainese@phys.au.dk</a> ·
-     <a href="https://github.com/SilkeDainese" style="color: #6A6A66;">GitHub</a>
+     letter-spacing: 0.1em; color: {WARM_GREY}; margin-top: 24px; margin-bottom: 24px;">
+     Built by <a href="https://silkedainese.github.io" style="color: {PINE};">Silke S. Dainese</a> ·
+     <a href="mailto:dainese@phys.au.dk" style="color: {WARM_GREY};">dainese@phys.au.dk</a> ·
+     <a href="https://github.com/SilkeDainese" style="color: {WARM_GREY};">GitHub</a>
 </div>
 """, unsafe_allow_html=True)

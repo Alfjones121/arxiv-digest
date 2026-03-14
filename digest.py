@@ -8,6 +8,7 @@ Use the setup wizard at arxiv-digest.streamlit.app to generate your config.
 
 Created by Silke S. Dainese · dainese@phys.au.dk · silkedainese.github.io
 """
+from __future__ import annotations
 
 import os
 import json
@@ -20,6 +21,7 @@ from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -44,7 +46,8 @@ CONFIG_EXAMPLE_PATH = Path(__file__).parent / "config.example.yaml"
 STATS_PATH = Path(__file__).parent / "keyword_stats.json"
 
 
-def load_config():
+def load_config() -> dict[str, Any]:
+    """Load and validate configuration from config.yaml with sensible defaults."""
     # Use config.yaml if it exists, otherwise fall back to config.example.yaml
     if CONFIG_PATH.exists():
         config_file = CONFIG_PATH
@@ -72,6 +75,9 @@ def load_config():
 
     # ── Existing fields with defaults ──
     cfg.setdefault("categories", ["astro-ph.EP", "astro-ph.SR", "astro-ph.GA"])
+    # If categories ended up empty/missing, default to broad physics
+    if not cfg["categories"]:
+        cfg["categories"] = ["physics"]
     cfg.setdefault("keywords", {})
     cfg.setdefault("research_authors", [])
     cfg.setdefault("colleagues", {"people": [], "institutions": []})
@@ -110,19 +116,21 @@ def load_config():
 #  KEYWORD TRACKING
 # ─────────────────────────────────────────────────────────────
 
-def load_keyword_stats():
+def load_keyword_stats() -> dict[str, Any]:
+    """Load keyword hit statistics from disk, or return empty dict if none exist."""
     if STATS_PATH.exists():
         with open(STATS_PATH) as f:
             return json.load(f)
     return {}
 
 
-def save_keyword_stats(stats):
+def save_keyword_stats(stats: dict[str, Any]) -> None:
+    """Persist keyword hit statistics to disk as JSON."""
     with open(STATS_PATH, "w") as f:
         json.dump(stats, f, indent=2)
 
 
-def update_keyword_stats(papers, config):
+def update_keyword_stats(papers: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
     """Track which keywords matched papers in this run."""
     stats = load_keyword_stats()
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -154,7 +162,15 @@ def update_keyword_stats(papers, config):
 #  ARXIV FETCHING
 # ─────────────────────────────────────────────────────────────
 
-def fetch_arxiv_papers(config):
+def fetch_arxiv_papers(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Fetch recent papers from the arXiv API for configured categories.
+
+    Args:
+        config: Application configuration with categories, days_back, keywords, etc.
+
+    Returns:
+        Deduplicated list of paper dicts with metadata and normalised keyword scores.
+    """
     papers = []
     for i, category in enumerate(config["categories"]):
         if i > 0:
@@ -278,20 +294,25 @@ def fetch_arxiv_papers(config):
     return unique
 
 
-def pre_filter(papers):
+def pre_filter(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep papers that match keywords or have known authors."""
     filtered = [p for p in papers if p["keyword_hits"] > 0 or p["known_authors"]]
     filtered.sort(key=lambda p: (len(p["known_authors"]) * 15 + p["keyword_hits"]), reverse=True)
-    print(f"   {len(filtered)} matched keywords/authors (sending top 30 to AI)")
-    return filtered[:30]
+    if filtered:
+        print(f"   {len(filtered)} matched keywords/authors (sending top 30 to AI)")
+        return filtered[:30]
+    # Discovery mode: no keyword/author matches — return newest papers
+    print("  No keyword matches — discovery mode: showing newest papers")
+    discovery = sorted(papers, key=lambda p: p.get("published", ""), reverse=True)
+    return discovery[:30]
 
 
-def extract_colleague_papers(papers):
+def extract_colleague_papers(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Separate out papers by colleagues — these always show regardless of score."""
     return [p for p in papers if p.get("colleague_matches")]
 
 
-def extract_own_papers(papers):
+def extract_own_papers(papers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Separate out the user's own papers — these get a celebration section."""
     return [p for p in papers if p.get("is_own_paper")]
 
@@ -300,13 +321,21 @@ def extract_own_papers(papers):
 #  AI ANALYSIS — Claude → Gemini → Keyword Fallback
 # ─────────────────────────────────────────────────────────────
 
-def _build_scoring_prompt(paper, config):
+def _build_scoring_prompt(paper: dict[str, Any], config: dict[str, Any]) -> str:
     """Shared prompt builder used by both Claude and Gemini paths."""
     # Sanitize researcher_name to prevent f-string/JSON corruption
     researcher_name = config["researcher_name"].replace('"', "'").replace("{", "").replace("}", "")
     research_context = config.get("research_context", "").strip()
     if not research_context:
-        research_context = "No specific research context provided. Score based on general relevance to the keywords."
+        if not config.get("keywords"):
+            categories = ", ".join(config.get("categories", []))
+            research_context = (
+                "No specific research context provided. Score based on general interest "
+                f"and novelty for researchers in {categories}. Prioritize: new discoveries, "
+                "novel methods, significant results, and papers likely to be widely cited."
+            )
+        else:
+            research_context = "No specific research context provided. Score based on general relevance to the keywords."
 
     return f"""You are helping curate a personalised arXiv digest for a researcher.
 
@@ -342,11 +371,11 @@ Score generously for this researcher's interests:
 """
 
 
-def _default_analysis(paper):
+def _default_analysis(paper: dict[str, Any]) -> dict[str, Any]:
     """Fallback analysis fields when AI scoring fails."""
     # keyword_hits is normalized 0-100, map to 1-10 scale
     return {
-        "relevance_score": min(10, max(1, round(paper["keyword_hits"] / 10))) if paper["keyword_hits"] > 0 else 1,
+        "relevance_score": min(10, max(1, round(paper["keyword_hits"] / 10) + len(paper["known_authors"]) * 3)) if paper["keyword_hits"] > 0 or paper["known_authors"] else 1,
         "plain_summary": paper["abstract"][:300] + ("..." if len(paper["abstract"]) > 300 else ""),
         "why_interesting": "Matched your keywords." + (
             f" Known author(s): {', '.join(paper['known_authors'])}." if paper["known_authors"] else ""
@@ -358,7 +387,7 @@ def _default_analysis(paper):
     }
 
 
-def _analyse_with_claude(papers, config, api_key):
+def _analyse_with_claude(papers: list[dict[str, Any]], config: dict[str, Any], api_key: str) -> tuple[list[dict[str, Any]] | None, str | None]:
     """Score papers using Claude. Returns (results, error_flag).
     error_flag is None on success, or a string describing the issue."""
     client = anthropic.Anthropic(api_key=api_key)
@@ -404,7 +433,7 @@ def _analyse_with_claude(papers, config, api_key):
     return _filter_and_sort(analysed, config), None
 
 
-def _analyse_with_gemini(papers, config, api_key):
+def _analyse_with_gemini(papers: list[dict[str, Any]], config: dict[str, Any], api_key: str) -> list[dict[str, Any]]:
     """Score papers using Gemini 2.0 Flash (free tier)."""
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
@@ -438,17 +467,26 @@ def _analyse_with_gemini(papers, config, api_key):
     return _filter_and_sort(analysed, config)
 
 
-def _fallback_analyse(papers, config):
+def _fallback_analyse(papers: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
     """Keyword-only scoring when no API key is available."""
+    discovery_mode = not config["keywords"]
     for p in papers:
-        # keyword_hits is normalized 0-100, map to 1-10 relevance
-        score = min(10, round(p["keyword_hits"] / 10) + len(p["known_authors"]) * 3)
-        p.update({
-            "relevance_score": max(score, 1),
-            "plain_summary": p["abstract"][:300] + ("..." if len(p["abstract"]) > 300 else ""),
-            "why_interesting": "Matched your keywords." + (
+        if discovery_mode:
+            # Discovery mode: score by proxies for significance
+            author_score = min(5, len(p["authors"]) // 3)
+            known_boost = len(p["known_authors"]) * 3
+            score = min(10, max(1, author_score + known_boost + 2))
+            why = "Discovery mode — scored by team size and author matches."
+        else:
+            # keyword_hits is normalized 0-100, map to 1-10 relevance
+            score = min(10, max(1, round(p["keyword_hits"] / 10) + len(p["known_authors"]) * 3))
+            why = "Matched your keywords." + (
                 f" Known author(s): {', '.join(p['known_authors'])}." if p["known_authors"] else ""
-            ),
+            )
+        p.update({
+            "relevance_score": score,
+            "plain_summary": p["abstract"][:300] + ("..." if len(p["abstract"]) > 300 else ""),
+            "why_interesting": why,
             "emoji": "📄",
             "highlight_phrase": p["title"][:50],
             "kw_tags": [], "method_tags": [],
@@ -457,7 +495,7 @@ def _fallback_analyse(papers, config):
     return _filter_and_sort(papers, config)
 
 
-def _filter_and_sort(analysed, config):
+def _filter_and_sort(analysed: list[dict[str, Any]], config: dict[str, Any]) -> list[dict[str, Any]]:
     """Filter by min_score, sort by relevance, cap at max_papers."""
     result = [p for p in analysed if p.get("relevance_score", 0) >= config["min_score"]]
     result.sort(key=lambda p: p.get("relevance_score", 0), reverse=True)
@@ -471,7 +509,7 @@ def _filter_and_sort(analysed, config):
     return result[:config["max_papers"]]
 
 
-def analyse_papers(papers, config):
+def analyse_papers(papers: list[dict[str, Any]], config: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
     """Dispatch to the best available AI backend, with cascade on failure.
     Returns (scored_papers, scoring_method) where scoring_method is one of:
     'claude', 'gemini', 'keywords', or 'keywords_fallback'."""
@@ -510,82 +548,74 @@ def analyse_papers(papers, config):
 # ─────────────────────────────────────────────────────────────
 
 # ── Brand palette ──
-PINE = "#2F4F3E"
-GOLD = "#EBC944"
-UMBER = "#7A5A3A"
-ASH_WHITE = "#F6F5F2"
-ASH_BLACK = "#2B2B2B"
-CARD_BORDER = "#D8D6D0"
-WARM_GREY = "#6A6A66"
-PINE_WASH = "#EDF2EF"
-PINE_LIGHT = "#3D6B52"
-GOLD_LIGHT = "#F5E08A"
+from brand import (PINE, GOLD, UMBER, ASH_WHITE, ASH_BLACK,
+                   CARD_BORDER, WARM_GREY, PINE_WASH, PINE_LIGHT, GOLD_LIGHT)
 
 
-def render_html(papers, colleague_papers, config, date_str, own_papers=None, scoring_method="claude"):
+# ── Shared inline-style constants ──
+_TAG = f"font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;display:inline-block;margin:2px 3px 2px 0;color:{WARM_GREY}"
 
-    def score_bar(score):
-        filled = round(score)
-        return "".join(["●" if i < filled else "○" for i in range(10)])
 
-    def accent_color(score):
-        if score >= 9: return PINE
-        if score >= 7: return PINE_LIGHT
-        if score >= 5: return GOLD
-        return UMBER
+def _score_bar(score: int | float) -> str:
+    """Return a 10-dot bar visualising the relevance score."""
+    filled = round(score)
+    return "".join(["●" if i < filled else "○" for i in range(10)])
 
-    TAG = f"font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;display:inline-block;margin:2px 3px 2px 0;color:{WARM_GREY}"
 
-    def build_tags(p):
-        score = p.get("relevance_score", 5)
-        tags = []
-        tags.append(f'<span style="{TAG};background:{PINE_WASH};color:{PINE}">{p["category"]}</span>')
-        tags.append(f'<span style="{TAG};color:{WARM_GREY}">{p["published"]}</span>')
-        for a in p.get("known_authors", []):
-            tags.append(f'<span style="{TAG};background:#FFF8E1;color:{UMBER}">&#x1F44B; {a}</span>')
-        if score >= 9:
-            tags.append(f'<span style="{TAG};background:#FFF0F0;color:#C0392B">&#x1F525; must-read</span>')
-        elif score >= 8:
-            tags.append(f'<span style="{TAG};background:#FFF8E1;color:{UMBER}">&#x1F4CC; thesis</span>')
-        for kw in (p.get("kw_tags") or [])[:2]:
-            tags.append(f'<span style="{TAG};background:{PINE_WASH};color:{PINE}">{kw}</span>')
-        if p.get("is_new_catalog"):
-            tags.append(f'<span style="{TAG};background:#F3E8FF;color:#6B21A8">&#x1F4E6; catalog</span>')
-        if p.get("cite_worthy"):
-            tags.append(f'<span style="{TAG};background:{PINE_WASH};color:{PINE}">&#x1F4CE; cite this</span>')
-        if p.get("new_result"):
-            tags.append(f'<span style="{TAG};background:{PINE_WASH};color:{PINE}">{p["new_result"]}</span>')
-        return " ".join(tags)
+def _accent_color(score: int | float) -> str:
+    """Map a relevance score to a brand accent colour."""
+    if score >= 9: return PINE
+    if score >= 7: return PINE_LIGHT
+    if score >= 5: return GOLD
+    return UMBER
 
-    def build_method_tags(p):
-        return " ".join(f'<span style="{TAG};background:#FFF8E1;color:{UMBER}">{t}</span>' for t in (p.get("method_tags") or []))
 
-    researcher_name = config.get("researcher_name", "Reader")
-    digest_name = config.get("digest_name", "arXiv Digest")
-    institution = config.get("institution", "")
-    department = config.get("department", "")
-    tagline = config.get("tagline", "")
-    github_repo = config.get("github_repo", "")
+def _build_tags(p: dict[str, Any]) -> str:
+    """Build inline HTML tag spans for a paper card."""
+    score = p.get("relevance_score", 5)
+    tags = []
+    tags.append(f'<span style="{_TAG};background:{PINE_WASH};color:{PINE}">{p["category"]}</span>')
+    tags.append(f'<span style="{_TAG};color:{WARM_GREY}">{p["published"]}</span>')
+    for a in p.get("known_authors", []):
+        tags.append(f'<span style="{_TAG};background:#FFF8E1;color:{UMBER}">&#x1F44B; {a}</span>')
+    if score >= 9:
+        tags.append(f'<span style="{_TAG};background:#FFF0F0;color:#C0392B">&#x1F525; must-read</span>')
+    elif score >= 8:
+        tags.append(f'<span style="{_TAG};background:#FFF8E1;color:{UMBER}">&#x1F4CC; thesis</span>')
+    for kw in (p.get("kw_tags") or [])[:2]:
+        tags.append(f'<span style="{_TAG};background:{PINE_WASH};color:{PINE}">{kw}</span>')
+    if p.get("is_new_catalog"):
+        tags.append(f'<span style="{_TAG};background:#F3E8FF;color:#6B21A8">&#x1F4E6; catalog</span>')
+    if p.get("cite_worthy"):
+        tags.append(f'<span style="{_TAG};background:{PINE_WASH};color:{PINE}">&#x1F4CE; cite this</span>')
+    if p.get("new_result"):
+        tags.append(f'<span style="{_TAG};background:{PINE_WASH};color:{PINE}">{p["new_result"]}</span>')
+    return " ".join(tags)
 
-    if own_papers is None:
-        own_papers = []
 
-    # ── Own papers celebration section ───────────────────────
-    own_papers_html = ""
-    if own_papers:
-        seen_ids = set()
-        unique_own = []
-        for p in own_papers:
-            if p["id"] not in seen_ids:
-                seen_ids.add(p["id"])
-                unique_own.append(p)
+def _build_method_tags(p: dict[str, Any]) -> str:
+    """Build inline HTML method tag spans for a paper card."""
+    return " ".join(f'<span style="{_TAG};background:#FFF8E1;color:{UMBER}">{t}</span>' for t in (p.get("method_tags") or []))
 
-        own_cards = ""
-        for p in unique_own:
-            authors_short = ", ".join(p["authors"][:4])
-            if len(p["authors"]) > 4:
-                authors_short += f" +{len(p['authors'])-4}"
-            own_cards += f"""
+
+def _render_own_paper_section(own_papers: list[dict[str, Any]], researcher_name: str) -> str:
+    """Return the 'your paper!' celebration section HTML (or empty string)."""
+    if not own_papers:
+        return ""
+
+    seen_ids: set[str] = set()
+    unique_own: list[dict[str, Any]] = []
+    for p in own_papers:
+        if p["id"] not in seen_ids:
+            seen_ids.add(p["id"])
+            unique_own.append(p)
+
+    own_cards = ""
+    for p in unique_own:
+        authors_short = ", ".join(p["authors"][:4])
+        if len(p["authors"]) > 4:
+            authors_short += f" +{len(p['authors'])-4}"
+        own_cards += f"""
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:10px">
           <tr><td style="background:linear-gradient(135deg, {PINE_WASH}, #FFF8E1);border:2px solid {GOLD};border-radius:8px;padding:20px 22px">
             <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:{PINE};margin-bottom:8px">&#x1F389; Congratulations, {researcher_name}!</div>
@@ -597,30 +627,33 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
           </td></tr>
         </table>"""
 
-        own_papers_html = f"""
+    return f"""
   <!-- YOUR PAPERS -->
   <tr><td style="padding:20px 44px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:{PINE}">&#x2500;&#x2500; Your publications &#x1F389; &#x2500;&#x2500;</td></tr>
   <tr><td style="padding:4px 24px 16px">
     {own_cards}
   </td></tr>"""
 
-    # ── Colleague post-it section ────────────────────────────
-    colleague_html = ""
-    if colleague_papers:
-        seen_ids = set()
-        unique_colleagues = []
-        for p in colleague_papers:
-            if p["id"] not in seen_ids:
-                seen_ids.add(p["id"])
-                unique_colleagues.append(p)
 
-        postits = ""
-        for p in unique_colleagues:
-            names = ", ".join(set(p["colleague_matches"]))
-            authors_short = ", ".join(p["authors"][:3])
-            if len(p["authors"]) > 3:
-                authors_short += f" +{len(p['authors'])-3}"
-            postits += f"""
+def _render_colleague_section(colleague_papers: list[dict[str, Any]]) -> str:
+    """Return the colleague post-it section HTML (or empty string)."""
+    if not colleague_papers:
+        return ""
+
+    seen_ids: set[str] = set()
+    unique_colleagues: list[dict[str, Any]] = []
+    for p in colleague_papers:
+        if p["id"] not in seen_ids:
+            seen_ids.add(p["id"])
+            unique_colleagues.append(p)
+
+    postits = ""
+    for p in unique_colleagues:
+        names = ", ".join(set(p["colleague_matches"]))
+        authors_short = ", ".join(p["authors"][:3])
+        if len(p["authors"]) > 3:
+            authors_short += f" +{len(p['authors'])-3}"
+        postits += f"""
         <table width="48%" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;vertical-align:top;margin:6px 1%">
           <tr><td style="background:#FFF8E1;border:1px solid {GOLD_LIGHT};border-radius:6px;padding:14px 16px">
             <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:{UMBER};margin-bottom:6px">&#x1F389; {names}</div>
@@ -631,7 +664,7 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
           </td></tr>
         </table>"""
 
-        colleague_html = f"""
+    return f"""
   <!-- COLLEAGUE NEWS -->
   <tr><td style="padding:20px 44px 8px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:{UMBER}">&#x2500;&#x2500; Colleague news &#x1F4EC; &#x2500;&#x2500;</td></tr>
   <tr><td style="padding:4px 24px 16px">
@@ -639,30 +672,30 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
     {postits}
   </td></tr>"""
 
-    # ── Paper cards ────────────────────────────────────────────
-    cards_html = ""
-    for i, p in enumerate(papers):
-        score = p.get("relevance_score", 5)
-        ac = accent_color(score)
-        authors_display = ", ".join(p["authors"][:5])
-        if len(p["authors"]) > 5:
-            authors_display += f" +{len(p['authors'])-5} more"
-        top_label = f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:0.2em;text-transform:uppercase;background:{PINE};color:white;padding:3px 12px;display:inline-block;border-radius:3px;margin-bottom:12px">&#x2B51; Top pick</span>' if i == 0 and len(papers) > 1 else ''
-        method_html = build_method_tags(p)
-        footer_methods = f'<div style="margin-top:12px">{method_html}</div>' if method_html else ''
 
-        cards_html += f"""
+def _render_paper_card(p: dict[str, Any], is_top_pick: bool, total_papers: int) -> str:
+    """Return the HTML for a single paper card."""
+    score = p.get("relevance_score", 5)
+    ac = _accent_color(score)
+    authors_display = ", ".join(p["authors"][:5])
+    if len(p["authors"]) > 5:
+        authors_display += f" +{len(p['authors'])-5} more"
+    top_label = f'<span style="font-family:\'DM Mono\',monospace;font-size:9px;letter-spacing:0.2em;text-transform:uppercase;background:{PINE};color:white;padding:3px 12px;display:inline-block;border-radius:3px;margin-bottom:12px">&#x2B51; Top pick</span>' if is_top_pick and total_papers > 1 else ''
+    method_html = _build_method_tags(p)
+    footer_methods = f'<div style="margin-top:12px">{method_html}</div>' if method_html else ''
+
+    return f"""
     <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:16px">
       <tr><td style="background:white;border:1px solid {CARD_BORDER};border-left:4px solid {ac};border-radius:8px;padding:24px 26px 20px">
         {top_label}
         <!-- Header: tags + score -->
         <table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="vertical-align:top;padding-bottom:10px">{build_tags(p)}</td>
+            <td style="vertical-align:top;padding-bottom:10px">{_build_tags(p)}</td>
             <td width="80" style="vertical-align:top;text-align:right;padding-bottom:10px">
               <span style="font-size:28px;line-height:1">{p.get('emoji','&#x1F52D;')}</span><br>
               <span style="font-family:'DM Serif Display',Georgia,serif;font-size:26px;color:{ac};line-height:1">{score}</span><span style="font-size:13px;color:{WARM_GREY}">/10</span><br>
-              <span style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:{ac};opacity:0.55">{score_bar(score)}</span>
+              <span style="font-family:'DM Mono',monospace;font-size:8px;letter-spacing:2px;color:{ac};opacity:0.55">{_score_bar(score)}</span>
             </td>
           </tr>
         </table>
@@ -695,9 +728,30 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
       </td></tr>
     </table>"""
 
-    if not papers and not colleague_papers:
-        cards_html = f'<div style="text-align:center;padding:60px 24px;color:{WARM_GREY};font-family:\'DM Serif Display\',Georgia,serif;font-style:italic;font-size:18px">No highly relevant papers this period. The cosmos is quiet. &#x2615;</div>'
 
+def _render_scoring_notice(scoring_method: str) -> str:
+    """Return the scoring-method notice banner HTML (or empty string)."""
+    if scoring_method == "keywords_fallback":
+        return f"""
+  <tr><td style="padding:12px 44px">
+    <div style="background:#FFF8E1;border:1px solid {GOLD_LIGHT};border-radius:6px;padding:14px 18px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:{UMBER};text-align:center">
+      &#x26A0;&#xFE0F; <strong>AI scoring unavailable this run</strong> — your API key may be out of credits. Papers were scored by keyword matching only, so relevance scores may be less accurate. Top up at <a href="https://console.anthropic.com" style="color:{PINE}">console.anthropic.com</a> or add a free <a href="https://aistudio.google.com/apikey" style="color:{PINE}">Gemini API key</a> as backup.
+    </div>
+  </td></tr>"""
+    elif scoring_method == "keywords":
+        return f"""
+  <tr><td style="padding:12px 44px">
+    <div style="background:{PINE_WASH};border:1px solid {CARD_BORDER};border-radius:6px;padding:14px 18px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:{WARM_GREY};text-align:center">
+      &#x1F4CA; Papers scored by keyword matching (no AI key configured). For smarter scoring, add an <code>ANTHROPIC_API_KEY</code> ($5 of credits will last hundreds of digests) or a free <code>GEMINI_API_KEY</code> to your repo secrets.
+    </div>
+  </td></tr>"""
+    return ""
+
+
+def _render_header(papers: list[dict[str, Any]], colleague_papers: list[dict[str, Any]],
+                   config: dict[str, Any], date_str: str, researcher_name: str,
+                   digest_name: str) -> str:
+    """Return the email header HTML including stats row."""
     avg_score = round(sum(p.get("relevance_score", 0) for p in papers) / max(len(papers), 1), 1)
     known_count = sum(1 for p in papers if p.get("known_authors"))
     colleague_count = len(set(p["id"] for p in colleague_papers)) if colleague_papers else 0
@@ -724,6 +778,28 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
 
     cats_display = " &middot; ".join(config["categories"])
 
+    return f"""
+  <!-- HEADER -->
+  <tr><td style="padding:52px 44px 36px;background:white;border-bottom:1px solid {CARD_BORDER}">
+    <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:{PINE};margin-bottom:14px;opacity:0.75">arXiv &middot; {cats_display} &middot; {date_str}</div>
+    <div style="font-family:'DM Serif Display',Georgia,serif;font-size:44px;font-weight:700;line-height:1.05;color:{ASH_BLACK};margin-bottom:6px">{digest_name}{"" if researcher_name.split()[0].lower() in digest_name.lower() else f'<br>for <span style="font-style:italic;color:{PINE}">{researcher_name}</span>'}</div>
+    <div style="font-size:13px;color:{WARM_GREY};margin-top:10px;font-family:'DM Serif Display',Georgia,serif">Your window into the cosmos &#x2726; curated by AI</div>
+    <!-- Stats row -->
+    <table cellpadding="0" cellspacing="0" border="0" style="margin-top:28px">
+      <tr>{stats_cells}</tr>
+    </table>
+    <div style="margin-top:20px;font-family:'DM Mono',monospace;font-size:10px;color:{CARD_BORDER};letter-spacing:0.08em;border-top:1px solid {CARD_BORDER};padding-top:16px">Monitoring {cats_display} &middot; last {config['days_back']} days &middot; threshold &#x2265; {config['min_score']}/10</div>
+  </td></tr>"""
+
+
+def _render_footer(config: dict[str, Any], scoring_method: str) -> str:
+    """Return the email footer HTML including self-service links and credits."""
+    digest_name = config.get("digest_name", "arXiv Digest")
+    institution = config.get("institution", "")
+    department = config.get("department", "")
+    tagline = config.get("tagline", "")
+    github_repo = config.get("github_repo", "")
+
     # ── Footer location line ──
     location_parts = [digest_name]
     if institution:
@@ -737,7 +813,7 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
     # ── Self-service links ──
     setup_url = "https://arxiv-digest.streamlit.app"
     link_style = f"color:{PINE};text-decoration:none"
-    service_links = []
+    service_links: list[str] = []
 
     if github_repo:
         edit_url = f"https://github.com/{github_repo}/edit/main/config.yaml"
@@ -755,7 +831,7 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
       {' &middot; '.join(service_links)}
     </div>"""
 
-    # ── Scoring label + notice ──
+    # ── Scoring label ──
     scoring_labels = {
         "claude": "Claude (Anthropic)",
         "gemini": "Gemini 2.0 Flash (Google)",
@@ -764,61 +840,8 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
         "none": "AI",
     }
     scoring_label = scoring_labels.get(scoring_method, "AI")
-    scoring_notice = ""
-    if scoring_method == "keywords_fallback":
-        scoring_notice = f"""
-  <tr><td style="padding:12px 44px">
-    <div style="background:#FFF8E1;border:1px solid {GOLD_LIGHT};border-radius:6px;padding:14px 18px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:{UMBER};text-align:center">
-      &#x26A0;&#xFE0F; <strong>AI scoring unavailable this run</strong> — your API key may be out of credits. Papers were scored by keyword matching only, so relevance scores may be less accurate. Top up at <a href="https://console.anthropic.com" style="color:{PINE}">console.anthropic.com</a> or add a free <a href="https://aistudio.google.com/apikey" style="color:{PINE}">Gemini API key</a> as backup.
-    </div>
-  </td></tr>"""
-    elif scoring_method == "keywords":
-        scoring_notice = f"""
-  <tr><td style="padding:12px 44px">
-    <div style="background:{PINE_WASH};border:1px solid {CARD_BORDER};border-radius:6px;padding:14px 18px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:{WARM_GREY};text-align:center">
-      &#x1F4CA; Papers scored by keyword matching (no AI key configured). For smarter scoring, add an <code>ANTHROPIC_API_KEY</code> ($5 of credits will last hundreds of digests) or a free <code>GEMINI_API_KEY</code> to your repo secrets.
-    </div>
-  </td></tr>"""
 
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{digest_name}{'' if researcher_name.split()[0].lower() in digest_name.lower() else f' for {researcher_name}'} — {date_str}</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@300;400;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0;padding:0;background:{ASH_WHITE};color:{ASH_BLACK};font-family:'IBM Plex Sans',Helvetica,Arial,sans-serif;font-weight:300;line-height:1.7;-webkit-font-smoothing:antialiased">
-<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{ASH_WHITE}">
-<tr><td align="center">
-<table width="680" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;width:100%;background:{ASH_WHITE}">
-
-  <!-- HEADER -->
-  <tr><td style="padding:52px 44px 36px;background:white;border-bottom:1px solid {CARD_BORDER}">
-    <div style="font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.3em;text-transform:uppercase;color:{PINE};margin-bottom:14px;opacity:0.75">arXiv &middot; {cats_display} &middot; {date_str}</div>
-    <div style="font-family:'DM Serif Display',Georgia,serif;font-size:44px;font-weight:700;line-height:1.05;color:{ASH_BLACK};margin-bottom:6px">{digest_name}{"" if researcher_name.split()[0].lower() in digest_name.lower() else f'<br>for <span style="font-style:italic;color:{PINE}">{researcher_name}</span>'}</div>
-    <div style="font-size:13px;color:{WARM_GREY};margin-top:10px;font-family:'DM Serif Display',Georgia,serif">Your window into the cosmos &#x2726; curated by AI</div>
-    <!-- Stats row -->
-    <table cellpadding="0" cellspacing="0" border="0" style="margin-top:28px">
-      <tr>{stats_cells}</tr>
-    </table>
-    <div style="margin-top:20px;font-family:'DM Mono',monospace;font-size:10px;color:{CARD_BORDER};letter-spacing:0.08em;border-top:1px solid {CARD_BORDER};padding-top:16px">Monitoring {cats_display} &middot; last {config['days_back']} days &middot; threshold &#x2265; {config['min_score']}/10</div>
-  </td></tr>
-
-  {own_papers_html}
-
-  {colleague_html}
-
-  <!-- SECTION DIVIDER -->
-  <tr><td style="padding:20px 44px 14px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:{WARM_GREY}">&#x2500;&#x2500; All papers this edition &middot; {len(papers)} {"paper" if len(papers) == 1 else "papers"} &#x2500;&#x2500;</td></tr>
-
-  <!-- PAPER CARDS -->
-  <tr><td style="padding:0 24px 52px">
-    {cards_html}
-  </td></tr>
-
-  {scoring_notice}
-
+    return f"""
   <!-- FOOTER -->
   <tr><td style="padding:36px 44px;border-top:1px solid {CARD_BORDER};background:white">
     <div style="text-align:center;font-size:18px;margin-bottom:18px;opacity:0.5;letter-spacing:10px;color:{WARM_GREY}">&#x2726; &middot; &#x2726; &middot; &#x2726;</div>
@@ -833,20 +856,90 @@ def render_html(papers, colleague_papers, config, date_str, own_papers=None, sco
       <a href="mailto:dainese@phys.au.dk" style="color:{WARM_GREY};text-decoration:none">dainese@phys.au.dk</a> &middot;
       <a href="https://github.com/SilkeDainese" style="color:{WARM_GREY};text-decoration:none">github.com/SilkeDainese</a>
     </div>
+  </td></tr>"""
+
+
+def _render_css(digest_name: str, researcher_name: str, date_str: str) -> str:
+    """Return the HTML head with font imports and opening body/table tags."""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{digest_name}{'' if researcher_name.split()[0].lower() in digest_name.lower() else f' for {researcher_name}'} — {date_str}</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@300;400;600&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:{ASH_WHITE};color:{ASH_BLACK};font-family:'IBM Plex Sans',Helvetica,Arial,sans-serif;font-weight:300;line-height:1.7;-webkit-font-smoothing:antialiased">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{ASH_WHITE}">
+<tr><td align="center">
+<table width="680" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;width:100%;background:{ASH_WHITE}">"""
+
+
+def render_html(papers: list[dict[str, Any]], colleague_papers: list[dict[str, Any]],
+                config: dict[str, Any], date_str: str,
+                own_papers: list[dict[str, Any]] | None = None,
+                scoring_method: str = "claude") -> str:
+    """Render the full HTML digest email from scored papers and config."""
+
+    researcher_name = config.get("researcher_name", "Reader")
+    digest_name = config.get("digest_name", "arXiv Digest")
+
+    if own_papers is None:
+        own_papers = []
+
+    # ── Build paper cards ──
+    cards_html = ""
+    for i, p in enumerate(papers):
+        cards_html += _render_paper_card(p, is_top_pick=(i == 0), total_papers=len(papers))
+
+    if not papers and not colleague_papers:
+        cards_html = f'<div style="text-align:center;padding:60px 24px;color:{WARM_GREY};font-family:\'DM Serif Display\',Georgia,serif;font-style:italic;font-size:18px">No highly relevant papers this period. The cosmos is quiet. &#x2615;</div>'
+
+    # ── Assemble full document ──
+    return (
+        _render_css(digest_name, researcher_name, date_str)
+        + "\n"
+        + _render_header(papers, colleague_papers, config, date_str, researcher_name, digest_name)
+        + "\n"
+        + f"""
+  {_render_own_paper_section(own_papers, researcher_name)}
+
+  {_render_colleague_section(colleague_papers)}
+
+  <!-- SECTION DIVIDER -->
+  <tr><td style="padding:20px 44px 14px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:0.25em;text-transform:uppercase;color:{WARM_GREY}">&#x2500;&#x2500; All papers this edition &middot; {len(papers)} {"paper" if len(papers) == 1 else "papers"} &#x2500;&#x2500;</td></tr>
+
+  <!-- PAPER CARDS -->
+  <tr><td style="padding:0 24px 52px">
+    {cards_html}
   </td></tr>
+
+  {_render_scoring_notice(scoring_method)}
+"""
+        + _render_footer(config, scoring_method)
+        + """
 
 </table>
 </td></tr>
 </table>
 </body>
 </html>"""
+    )
 
 
 # ─────────────────────────────────────────────────────────────
 #  EMAIL SENDING — Multi-provider SMTP
 # ─────────────────────────────────────────────────────────────
 
-def send_email(html, paper_count, date_str, config):
+def send_email(html: str, paper_count: int, date_str: str, config: dict[str, Any]) -> None:
+    """Send the digest HTML as an email via SMTP.
+
+    Args:
+        html: Rendered HTML body of the digest.
+        paper_count: Total number of papers to display in the subject line.
+        date_str: Human-readable date string for the subject line.
+        config: Application config containing SMTP and recipient settings.
+    """
     recipient = config["recipient_email"]
 
     # Support both new (SMTP_*) and legacy (GMAIL_*) secret names
@@ -896,7 +989,8 @@ def send_email(html, paper_count, date_str, config):
 #  MAIN
 # ─────────────────────────────────────────────────────────────
 
-def main():
+def main() -> None:
+    """Run the full arXiv digest pipeline: fetch, score, render, and email."""
     import sys
     import webbrowser
 
