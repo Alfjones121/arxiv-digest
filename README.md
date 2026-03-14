@@ -18,6 +18,8 @@ If you have suggestions, open an issue or [email me](mailto:dainese@phys.au.dk).
 
 Three steps plus one email-delivery secret. No terminal.
 
+Prefer a terminal flow? Run `python -m scripts.friend_setup` from a checkout of this repo. It opens the setup wizard, waits for `config.yaml` in Downloads, forks the repo, uploads the config, writes Actions secrets, enables Actions, and can trigger the first run for you.
+
 ### 1. Generate your config
 
 **[Open the setup wizard →](https://arxiv-digest-setup.streamlit.app)**
