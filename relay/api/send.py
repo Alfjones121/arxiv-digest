@@ -78,7 +78,7 @@ class handler(BaseHTTPRequestHandler):
                 server.starttls()
                 server.ehlo()
                 server.login(SMTP_USER, SMTP_PASSWORD)
-                server.sendmail(SMTP_USER, recipients, msg.as_string())
+                server.sendmail(SMTP_USER, recipients, msg.as_bytes())
             self._respond(200, {"ok": True, "sent_to": len(recipients)})
         except smtplib.SMTPAuthenticationError:
             self._respond(500, {"error": "SMTP auth failed"})
