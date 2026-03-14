@@ -1096,6 +1096,16 @@ def _commit_preview() -> None:
         if not any(c["name"] == name for c in st.session_state.colleagues_people):
             st.session_state.colleagues_people.append({"name": name, "match": [match_pattern]})
 
+    # Auto-populate self-match from ORCID name
+    full_name = p.get("name", "").strip()
+    if full_name:
+        parts = full_name.split()
+        if len(parts) >= 2:
+            # "Alfred Jones" → "Jones, A"
+            arxiv_pattern = f"{parts[-1]}, {parts[0][0]}"
+            if arxiv_pattern not in st.session_state.self_match:
+                st.session_state.self_match.append(arxiv_pattern)
+
     st.session_state.pure_scanned = True
     st.session_state.orcid_preview = None
 
