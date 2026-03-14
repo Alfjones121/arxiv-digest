@@ -1,7 +1,9 @@
 from pathlib import Path
+import builtins
 import os
 import time
 
+import scripts.friend_setup as friend_setup
 from scripts.friend_setup import pick_downloaded_config, prepare_config_text, rewrite_top_level_scalar
 
 
@@ -39,3 +41,46 @@ def test_prepare_config_text_appends_missing_github_repo(tmp_path):
 
     assert prepared.endswith('github_repo: "friend/arxiv-digest"\n')
     assert 'recipient_email: "a@example.com"' in prepared
+
+
+def test_collect_secret_values_for_relay(monkeypatch):
+    answers = iter(["1", "friend@example.com"])
+    secrets = iter(["relay-token", "", ""])
+
+    monkeypatch.setattr(builtins, "input", lambda _: next(answers))
+    monkeypatch.setattr(friend_setup.getpass, "getpass", lambda _: next(secrets))
+
+    collected, mode = friend_setup.collect_secret_values()
+
+    assert mode == "1"
+    assert collected == {
+        "RECIPIENT_EMAIL": "friend@example.com",
+        "DIGEST_RELAY_TOKEN": "relay-token",
+    }
+
+
+def test_collect_secret_values_for_smtp(monkeypatch):
+    answers = iter(["2", "friend@example.com", "friend@gmail.com"])
+    secrets = iter(["app-password", "gemini-key", ""])
+
+    monkeypatch.setattr(builtins, "input", lambda _: next(answers))
+    monkeypatch.setattr(friend_setup.getpass, "getpass", lambda _: next(secrets))
+
+    collected, mode = friend_setup.collect_secret_values()
+
+    assert mode == "2"
+    assert collected == {
+        "RECIPIENT_EMAIL": "friend@example.com",
+        "SMTP_USER": "friend@gmail.com",
+        "SMTP_PASSWORD": "app-password",
+        "GEMINI_API_KEY": "gemini-key",
+    }
+
+
+def test_collect_secret_values_allows_repo_only(monkeypatch):
+    monkeypatch.setattr(builtins, "input", lambda _: "3")
+
+    collected, mode = friend_setup.collect_secret_values()
+
+    assert mode == "3"
+    assert collected == {}

@@ -97,6 +97,32 @@ def prompt_yes_no(text: str, *, default: bool = True) -> bool:
         print("Please answer yes or no.")
 
 
+def prompt_choice(
+    text: str,
+    options: list[tuple[str, str, str]],
+    *,
+    default: str,
+) -> str:
+    """Prompt the user to choose one labeled option."""
+    option_map = {key: (label, detail) for key, label, detail in options}
+    if default not in option_map:
+        raise ValueError(f"Unknown default choice: {default}")
+
+    print(text)
+    for key, label, detail in options:
+        default_note = " (default)" if key == default else ""
+        print(f"  {key}) {label}{default_note}")
+        print(f"     {detail}")
+
+    while True:
+        value = input(f"Choose [{default}]: ").strip().lower()
+        if not value:
+            return default
+        if value in option_map:
+            return value
+        print("Please choose one of: " + ", ".join(key for key, _, _ in options))
+
+
 def pick_downloaded_config(downloads_dir: Path, started_at: float) -> Path | None:
     """Return the newest freshly-downloaded config file, if any."""
     candidates: list[Path] = []
@@ -277,25 +303,57 @@ def configure_actions(repo: str) -> None:
     run_command(["gh", "workflow", "enable", "digest.yml", "-R", repo], check=False)
 
 
-def collect_secret_values() -> dict[str, str]:
-    """Prompt for the secrets to install in the new fork."""
+def collect_optional_ai_secrets() -> dict[str, str]:
+    """Prompt for optional AI-provider secrets."""
     secrets: dict[str, str] = {}
-    secrets["RECIPIENT_EMAIL"] = prompt("Recipient email")
-
-    if prompt_yes_no("Use a relay token from the setup wizard?", default=True):
-        secrets["DIGEST_RELAY_TOKEN"] = prompt_secret("DIGEST_RELAY_TOKEN")
-    else:
-        secrets["SMTP_USER"] = prompt("SMTP_USER")
-        secrets["SMTP_PASSWORD"] = prompt_secret("SMTP_PASSWORD")
-
     gemini = prompt_secret("GEMINI_API_KEY (optional)", required=False)
     if gemini:
         secrets["GEMINI_API_KEY"] = gemini
     anthropic = prompt_secret("ANTHROPIC_API_KEY (optional)", required=False)
     if anthropic:
         secrets["ANTHROPIC_API_KEY"] = anthropic
-
     return secrets
+
+
+def collect_secret_values() -> tuple[dict[str, str], str]:
+    """Prompt for the secrets to install in the new fork."""
+    mode = prompt_choice(
+        "\nChoose how this fork should deliver email:",
+        [
+            (
+                "1",
+                "Invite token / relay",
+                "Use a DIGEST_RELAY_TOKEN from the setup wizard or a maintainer invite.",
+            ),
+            (
+                "2",
+                "Your own Gmail / SMTP",
+                "Use SMTP_USER and SMTP_PASSWORD so mail sends from your own mailbox.",
+            ),
+            (
+                "3",
+                "Prepare repo only",
+                "Upload config and enable Actions now, but skip all secrets for the moment.",
+            ),
+        ],
+        default="1",
+    )
+
+    if mode == "3":
+        return {}, mode
+
+    secrets: dict[str, str] = {}
+    secrets["RECIPIENT_EMAIL"] = prompt("Recipient email")
+
+    if mode == "1":
+        secrets["DIGEST_RELAY_TOKEN"] = prompt_secret("DIGEST_RELAY_TOKEN")
+    else:
+        secrets["SMTP_USER"] = prompt("SMTP_USER")
+        secrets["SMTP_PASSWORD"] = prompt_secret("SMTP_PASSWORD")
+
+    secrets.update(collect_optional_ai_secrets())
+
+    return secrets, mode
 
 
 def verify_gh_ready() -> None:
@@ -352,15 +410,22 @@ def main() -> int:
     upload_config(target_repo, config_text, author_name=login)
     print(f"Uploaded config.yaml to {target_repo}")
 
-    print("\nNow enter the secrets for your fork.")
-    for name, value in collect_secret_values().items():
+    print("\nNow choose what to set up for this fork.")
+    secrets, secret_mode = collect_secret_values()
+    for name, value in secrets.items():
         set_actions_secret(target_repo, name, value)
         print(f"Set secret: {name}")
 
     configure_actions(target_repo)
     print("Enabled Actions and workflow write permissions.")
 
-    if not args.no_run and prompt_yes_no("Run the first digest now?", default=True):
+    if secret_mode == "3":
+        print(
+            "Repo setup is complete. Add a delivery method later with either "
+            "DIGEST_RELAY_TOKEN or SMTP_USER and SMTP_PASSWORD."
+        )
+        print(f"Then open https://github.com/{target_repo}/actions to run it.")
+    elif not args.no_run and prompt_yes_no("Run the first digest now?", default=True):
         run_command(["gh", "workflow", "run", "digest.yml", "-R", target_repo])
         print(f"Triggered the digest workflow: https://github.com/{target_repo}/actions")
     else:

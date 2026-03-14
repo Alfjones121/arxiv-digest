@@ -18,7 +18,11 @@ If you have suggestions, open an issue or [email me](mailto:dainese@phys.au.dk).
 
 Three steps plus one email-delivery secret. No terminal.
 
-Prefer a terminal flow? Run `python -m scripts.friend_setup` from a checkout of this repo. It opens the setup wizard, waits for `config.yaml` in Downloads, forks the repo, uploads the config, writes Actions secrets, enables Actions, and can trigger the first run for you.
+Prefer a terminal flow? Run `python -m scripts.friend_setup` from a checkout of this repo. It opens the setup wizard, waits for `config.yaml` in Downloads, forks the repo, uploads the config, enables Actions, and then walks you through one of three setup modes:
+
+- invite token / relay
+- your own Gmail / SMTP
+- repo only for now, with secrets added later
 
 ### 1. Generate your config
 
