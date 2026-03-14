@@ -177,7 +177,7 @@
   "sub-Neptune": {
     "total_hits": 0,
     "last_hit": null,
-    "runs_checked": 3
+    "runs_checked": 4
   },
   "water world": {
     "total_hits": 0,
@@ -228,5 +228,30 @@
     "total_hits": 0,
     "last_hit": null,
     "runs_checked": 3
+  },
+  "transmission spectroscopy": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 1
+  },
+  "hot Jupiter atmosphere": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 1
+  },
+  "JWST": {
+    "total_hits": 2,
+    "last_hit": "2026-03-14",
+    "runs_checked": 1
+  },
+  "atmospheric retrieval": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 1
+  },
+  "cloud properties": {
+    "total_hits": 0,
+    "last_hit": null,
+    "runs_checked": 1
   }
 }
