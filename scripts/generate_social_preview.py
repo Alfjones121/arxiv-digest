@@ -84,21 +84,6 @@ HTML = f"""<!DOCTYPE html>
       z-index: -3;
     }}
 
-    .canvas::after {{
-      content: "";
-      position: absolute;
-      right: -120px;
-      top: -120px;
-      width: 480px;
-      height: 480px;
-      border-radius: 50%;
-      border: 1px solid rgba(246, 245, 242, 0.18);
-      box-shadow:
-        0 0 0 72px rgba(246, 245, 242, 0.04),
-        0 0 0 144px rgba(246, 245, 242, 0.03);
-      z-index: -2;
-    }}
-
     .spark {{
       position: absolute;
       color: rgba(235, 201, 68, 0.85);
