@@ -1187,21 +1187,8 @@ else:
     # ── Review card: show what was found, let user correct ──
     if st.session_state.orcid_preview:
         p = st.session_state.orcid_preview
-        st.markdown("**Review what we found — correct anything before importing:**")
-
-        p["name"] = st.text_input("Name", value=p["name"], key="preview_name")
-        p["institution"] = st.text_input("Institution", value=p["institution"], key="preview_institution")
+        st.markdown(f"**{p['name']}** · {p['institution']}")
         st.caption(f"ORCID: {p['orcid_url']}")
-
-        if p.get("research_summary"):
-            st.markdown("**Research summary** — edit freely, this is yours:")
-            p["research_summary"] = st.text_area(
-                "Research summary",
-                value=p["research_summary"],
-                height=110,
-                key="preview_summary",
-                label_visibility="collapsed",
-            )
 
         if p["keywords"]:
             st.markdown("**Keywords from your publications:**")
