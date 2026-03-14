@@ -84,6 +84,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
+_ORCID_ID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
+
+
 # ─────────────────────────────────────────────────────────────
 #  arXiv categories + AI suggestion hints
 # ─────────────────────────────────────────────────────────────
@@ -370,6 +373,48 @@ def _call_ai(prompt: str, max_tokens: int = 512) -> str | None:
             pass
 
     return None
+
+
+@st.cache_data(show_spinner=False)
+def _test_ai_key(gemini_key: str, anthropic_key: str) -> tuple[bool, str, str]:
+    """
+    Validate that at least one AI key actually works.
+
+    Cached by key values so it only runs once per unique key combination.
+
+    Returns (ok, provider_name, error_message).
+    """
+    if gemini_key and _GEMINI_AVAILABLE:
+        try:
+            _genai_lib.configure(api_key=gemini_key)
+            model = _genai_lib.GenerativeModel("gemini-1.5-flash")
+            model.generate_content("Hi", generation_config={"max_output_tokens": 1})
+            return True, "Gemini", ""
+        except Exception as e:
+            gemini_err = str(e)
+    else:
+        gemini_err = ""
+
+    if anthropic_key and _ANTHROPIC_AVAILABLE:
+        try:
+            client = _anthropic_lib.Anthropic(api_key=anthropic_key)
+            client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1,
+                messages=[{"role": "user", "content": "Hi"}],
+            )
+            return True, "Anthropic", ""
+        except Exception as e:
+            anthropic_err = str(e)
+    else:
+        anthropic_err = ""
+
+    errors = []
+    if gemini_err:
+        errors.append(f"Gemini: {gemini_err}")
+    if anthropic_err:
+        errors.append(f"Anthropic: {anthropic_err}")
+    return False, "", "  |  ".join(errors) if errors else "No valid key entered."
 
 
 def draft_research_description(keywords: dict[str, int]) -> str:
@@ -659,8 +704,15 @@ with col_a:
     st.caption("[Get a key →](https://console.anthropic.com/settings/keys)")
 
 if _ai_available():
-    provider = "Gemini" if (_get_gemini_key() and _GEMINI_AVAILABLE) else "Anthropic"
-    st.success(f"AI ready — using {provider}.")
+    with st.spinner("Checking key..."):
+        _key_ok, _provider, _key_err = _test_ai_key(
+            _get_gemini_key() or "", _get_anthropic_key() or ""
+        )
+    if _key_ok:
+        st.success(f"AI ready — using {_provider}.")
+    else:
+        st.error(f"Key didn't work: {_key_err}")
+        st.stop()
 else:
     st.warning("Enter an API key above to continue. AI is required for profile search and paper scoring.")
     st.stop()
@@ -676,8 +728,6 @@ st.divider()
 
 st.markdown("## 1. Your ORCID")
 st.markdown("Enter your ORCID ID — we'll pull your profile and publications automatically.")
-
-_ORCID_ID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 if "pure_confirmed_url" not in st.session_state:
     st.session_state.pure_confirmed_url = ""
@@ -836,20 +886,37 @@ else:
             if p.get("titles"):
                 st.caption(f"No co-authors with confirmed {p['institution']} affiliation found automatically.")
 
-        # Manual add — always shown so user can add people not found via ORCID
+        # Manual add by ORCID — for colleagues not found automatically
+        st.caption("Add a colleague by their ORCID:")
         extra_col, extra_btn = st.columns([4, 1])
         with extra_col:
-            extra_colleague = st.text_input(
-                "Add a colleague",
-                placeholder="Jane Smith",
-                key="preview_extra_colleague",
+            extra_orcid = st.text_input(
+                "Colleague ORCID",
+                placeholder="0000-0001-2345-6789  or  https://orcid.org/...",
+                key="preview_extra_orcid",
                 label_visibility="collapsed",
             )
         with extra_btn:
-            if st.button("Add", key="preview_add_colleague"):
-                name = extra_colleague.strip()
-                if name and name not in p["selected_colleagues"]:
-                    p["selected_colleagues"].append(name)
+            add_clicked = st.button("Look up", key="preview_add_colleague")
+
+        if add_clicked and extra_orcid.strip():
+            inp = extra_orcid.strip().rstrip("/")
+            if inp.startswith("https://orcid.org/"):
+                lookup_id = inp.split("/")[-1]
+            elif _ORCID_ID_RE.match(inp):
+                lookup_id = inp
+            else:
+                st.error("Enter a valid ORCID (e.g. 0000-0001-2345-6789).")
+                lookup_id = ""
+
+            if lookup_id:
+                with st.spinner("Looking up colleague..."):
+                    found_name, found_inst, found_err = fetch_orcid_person(lookup_id)
+                if found_err:
+                    st.error(f"Could not fetch: {found_err}")
+                elif found_name and found_name not in p["selected_colleagues"]:
+                    p["selected_colleagues"].append(found_name)
+                    st.success(f"Added {found_name} ({found_inst or 'no institution on ORCID'})")
                     st.rerun()
 
         if st.button("✓ Looks good — import", type="primary"):
