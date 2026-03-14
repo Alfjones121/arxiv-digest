@@ -98,20 +98,7 @@ HTML = f"""<!DOCTYPE html>
     .header {{
       display: flex;
       align-items: center;
-      gap: 16px;
       margin-bottom: 42px;
-    }}
-
-    .mark {{
-      width: 42px;
-      height: 42px;
-      border-radius: 50%;
-      border: 1px solid rgba(246, 245, 242, 0.18);
-      background:
-        radial-gradient(circle at 34% 34%, rgba(235, 201, 68, 0.95), transparent 18%),
-        radial-gradient(circle at 68% 64%, rgba(235, 201, 68, 0.45), transparent 34%),
-        linear-gradient(135deg, rgba(246, 245, 242, 0.1), rgba(246, 245, 242, 0.03));
-      box-shadow: 0 0 30px rgba(235, 201, 68, 0.12);
     }}
 
     .kicker {{
@@ -317,7 +304,6 @@ HTML = f"""<!DOCTYPE html>
     <div class="spark s3">✦</div>
 
     <header class="header">
-      <div class="mark"></div>
       <div class="kicker">Personal arXiv curator</div>
     </header>
 
