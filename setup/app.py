@@ -1712,9 +1712,8 @@ with st.expander("**1. Your ORCID**", expanded=(st.session_state.current_step ==
                 and n.strip().lower() not in _coauthor_blocklist
             ]
             if pickable:
-                with st.expander(
-                    f"Or pick from your {len(all_coauthors)} ORCID co-authors"
-                ):
+                st.markdown(f"**Or pick from your {len(all_coauthors)} ORCID co-authors**")
+                if True:
                     pick_filter = st.text_input(
                         "Filter by name",
                         key="coauthor_pick_filter",
@@ -1979,10 +1978,8 @@ with st.expander(
         )
 
         def _render_paper_selector(expanded: bool) -> list[str]:
-            with st.expander(
-                f"Edit paper selection ({len(st.session_state.get('selected_papers', []))} selected)",
-                expanded=expanded,
-            ):
+            st.markdown(f"**Edit paper selection ({len(st.session_state.get('selected_papers', []))} selected)**")
+            if True:
                 quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
                 with quick_col1:
                     if st.button("Recent 10", key="paper_recent_10"):
@@ -2591,7 +2588,8 @@ with st.expander(
     override_max = False
     override_min = False
 
-    with st.expander("Fine-tune (optional)"):
+    st.markdown("**Fine-tune (optional)**")
+    if True:
         col1, col2 = st.columns(2)
         with col1:
             max_papers = st.number_input(
@@ -2629,7 +2627,8 @@ with st.expander(
     schedule_days_back = {"daily": 2, "mon_wed_fri": 4, "weekly": 8}
     days_back = schedule_days_back[schedule]
 
-    with st.expander("Override days back"):
+    override_days = st.checkbox("Override days back", value=False, key="override_days_back")
+    if override_days:
         days_back = st.number_input(
             "Days to look back", min_value=1, max_value=14, value=days_back
         )
