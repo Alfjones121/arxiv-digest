@@ -34,11 +34,14 @@ This creates your own copy. Everything runs in your fork — nothing is shared b
 
 ### 3. Upload your config and run
 
-In your fork: **[Add file](https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository) → Upload files** → drag in `config.yaml` → **Commit changes**.
+In your fork: **Add file → Upload files** → drag in `config.yaml` → **Commit changes**.
 
-Then go to **Actions → arXiv Digest → Run workflow → Run workflow**.
+Then:
 
-You should get your first digest email within a few minutes. If something is wrong, the workflow log tells you exactly what to fix.
+1. Go to the **Actions** tab → click **"I understand my workflows, go ahead and enable them"**
+2. Click **arXiv Digest** in the left sidebar → **Run workflow** → **Run workflow**
+
+Your first digest email should arrive within a few minutes. If something goes wrong, the workflow log tells you exactly what to fix.
 
 **That's it.** Your digest now runs automatically **Mon/Wed/Fri at 9am Danish time**. Papers show up in your inbox — no further action needed.
 
@@ -121,26 +124,9 @@ These create labeled GitHub issues (`digest-feedback`) that are automatically in
 
 ## Email Setup
 
-By default, digest emails are sent via a shared relay from `arxivdigestau@gmail.com`. No email setup needed.
+**You don't need to configure anything.** Emails are sent from `arxivdigestau@gmail.com` via a shared relay — it just works.
 
-If you prefer to send from your own email, add `SMTP_USER` and `SMTP_PASSWORD` as [repo secrets](https://docs.github.com/en/actions/security-for-github-actions/security-guides/using-secrets-in-github-actions):
-
-### Gmail
-
-1. Enable [2-Step Verification](https://myaccount.google.com/signinoptions/two-step-verification)
-2. Generate an [App Password](https://myaccount.google.com/apppasswords) — select "Mail" as the app
-3. Add `SMTP_USER` (your Gmail address) and `SMTP_PASSWORD` (the App Password) as repo secrets
-
-### Outlook / Office 365
-
-1. Set up an [App Password](https://account.microsoft.com/security) in your Microsoft account
-2. Add `SMTP_USER` and `SMTP_PASSWORD` as repo secrets
-3. Update your `config.yaml`:
-
-```yaml
-smtp_server: "smtp.office365.com"
-smtp_port: 587
-```
+If you prefer to send from your own email instead, see the **Own email sender** row in [Optional Upgrades](#optional-upgrades). Gmail users need an [App Password](https://myaccount.google.com/apppasswords); Outlook users should also set `smtp_server: "smtp.office365.com"` in their `config.yaml`.
 
 ---
 
