@@ -4,7 +4,7 @@ Fetches new arXiv papers, scores them with AI (Claude → Gemini → keyword fal
 and sends a beautiful HTML digest via email.
 
 Configuration lives in config.yaml — edit that file to update keywords, colleagues, etc.
-Use the setup wizard at arxiv-digest-setup.streamlit.app to generate your config.
+Use the setup wizard to generate your config.
 
 Created by Silke S. Dainese · dainese@phys.au.dk · silkedainese.github.io
 """
@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+DEFAULT_SETUP_URL = "https://arxiv-digest-setup.streamlit.app"
 
 try:
     import anthropic
@@ -142,6 +144,7 @@ def load_config() -> dict[str, Any]:
     # ── Environment overrides (env var wins, config.yaml as fallback) ──
     cfg["recipient_email"] = os.environ.get("RECIPIENT_EMAIL", "").strip() or cfg.get("recipient_email", "")
     cfg["github_repo"] = os.environ.get("GITHUB_REPOSITORY", "").strip() or cfg.get("github_repo", "")
+    cfg["setup_url"] = os.environ.get("SETUP_WIZARD_URL", "").strip() or cfg.get("setup_url", DEFAULT_SETUP_URL)
 
     # Backward/typo-safe normalisation for recipient view mode
     mode = str(cfg.get("recipient_view_mode", "deep_read")).strip().lower().replace("-", "_")
@@ -1345,7 +1348,7 @@ def _render_footer(config: dict[str, Any], scoring_method: str) -> str:
     tagline_line = f'<em>"{tagline}"</em>' if tagline else ""
 
     # ── Self-service links ──
-    setup_url = "https://arxiv-digest-setup.streamlit.app"
+    setup_url = config.get("setup_url", DEFAULT_SETUP_URL)
     link_style = f"color:{PINE};text-decoration:none"
     service_links: list[str] = []
 
