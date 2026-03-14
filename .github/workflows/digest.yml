@@ -81,6 +81,7 @@ jobs:
 
       - name: Commit keyword stats
         if: always()
+        continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -88,7 +89,7 @@ jobs:
           [ -f keyword_stats.json ] && git add keyword_stats.json || true
           [ -f feedback_stats.json ] && git add feedback_stats.json || true
           git diff --cached --quiet || git commit -m "📊 Update digest stats [skip ci]"
-          git push || true
+          git push || echo "⚠️ Could not push stats (workflow permissions may not be enabled). This is optional — your digest still works fine."
 
       - name: Upload digest as artifact
         if: always()

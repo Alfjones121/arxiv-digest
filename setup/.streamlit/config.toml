@@ -1,3 +1,4 @@
+# Brand colors — must stay in sync with brand.py (Streamlit TOML can't import Python).
 [theme]
 primaryColor = "#2F4F3E"
 backgroundColor = "#F6F5F2"

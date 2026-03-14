@@ -72,3 +72,9 @@ Global rules live in `~/.claude/CLAUDE.md`.
 - README is for end users (forkers). It must stay non-technical. No jargon, no internal architecture details.
 - Operational rules for contributors go in `CONTRIBUTING.md`, not the README.
 - The README's Quick Start section is the canonical onboarding path. Keep it to 6 steps.
+
+---
+
+## Email Formatting
+
+- The subject line uses a telescope emoji (🔭) as prefix. This is intentional for brand recognition but may trigger corporate email filters. If users report delivery issues, the emoji is the first thing to investigate.

@@ -112,4 +112,4 @@ smtp_port: 587
 
 # ── Your Repository ───────────────────────────
 # Used for self-service links in emails (edit config, pause digest)
-github_repo: ""          # e.g. "username/arxiv-digest"
+github_repo: ""          # Your fork's path, e.g. "janedoe/arxiv-digest" — enables self-service links in emails

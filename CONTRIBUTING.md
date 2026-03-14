@@ -40,7 +40,9 @@ digest.py              — the entire pipeline (single-file by design)
 brand.py               — colour palette, single source of truth
 config.example.yaml    — config template and documentation
 requirements.txt       — pinned runtime dependencies
-setup/                 — Streamlit setup wizard (separate app)
+setup/app.py           — Streamlit setup wizard (separate app)
+setup/data.py          — data constants for the wizard (categories, presets, hints)
+setup/pure_scraper.py  — ORCID/Pure integration for the wizard
 tests/test_digest.py   — pytest suite
 .github/workflows/     — CI/CD
 ```
