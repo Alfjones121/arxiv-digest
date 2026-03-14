@@ -88,6 +88,17 @@ st.markdown(f"""
 _ORCID_ID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 
 
+def _weight_label(w: int) -> str:
+    """Return a human-readable label for a keyword weight (1–10)."""
+    if w <= 2:
+        return "loosely follow"
+    if w <= 5:
+        return "interested"
+    if w <= 8:
+        return "main field"
+    return "everything"
+
+
 # ─────────────────────────────────────────────────────────────
 #  arXiv categories + AI suggestion hints
 # ─────────────────────────────────────────────────────────────
@@ -1205,27 +1216,35 @@ if ai_assist and st.session_state.ai_suggested_kws:
 
 # Manual keyword entry
 st.markdown("**Add keyword manually:**")
-col1, col2, col3 = st.columns([3, 1, 1])
+col1, col2, col3 = st.columns([3, 2, 1])
 with col1:
     new_kw = st.text_input("Keyword", placeholder="transmission spectroscopy", label_visibility="collapsed", key="new_kw_input")
 with col2:
     new_weight = st.slider("Weight", 1, 10, 7, label_visibility="collapsed", key="new_kw_weight")
+    st.caption(f"_{_weight_label(new_weight)}_")
 with col3:
     if st.button("Add", use_container_width=True, key="add_kw_btn"):
         if new_kw.strip():
             st.session_state.keywords[new_kw.strip()] = new_weight
             st.rerun()
 
-# Display existing keywords
+# Display existing keywords with editable weight sliders
 if st.session_state.keywords:
     st.markdown("**Your keywords:**")
     to_remove = []
     for kw, weight in sorted(st.session_state.keywords.items(), key=lambda x: -x[1]):
-        col1, col2, col3 = st.columns([3, 1, 1])
+        col1, col2, col3 = st.columns([3, 2, 1])
         with col1:
             st.markdown(f"`{kw}`")
         with col2:
-            st.markdown(f"weight: **{weight}**/10")
+            new_w = st.slider(
+                "weight", 1, 10, weight,
+                key=f"kw_slider_{kw}",
+                label_visibility="collapsed",
+            )
+            st.caption(f"_{_weight_label(new_w)}_")
+            # Update weight in-place — no rerun needed, slider state persists
+            st.session_state.keywords[kw] = new_w
         with col3:
             if st.button("✕", key=f"rm_kw_{kw}", help=f"Remove {kw}"):
                 to_remove.append(kw)
