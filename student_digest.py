@@ -222,11 +222,18 @@ def make_student_digest_config(base_config: dict[str, Any], subscription: dict[s
     email = subscription["email"]
     config["recipient_email"] = email
     config["max_papers"] = int(subscription["max_papers_per_week"])
+    packages_csv = ",".join(subscription["package_ids"])
+    manage_params = {
+        "email": email,
+        "packages": packages_csv,
+        "max_papers": str(subscription["max_papers_per_week"]),
+    }
     config["subscription_manage_url"] = (
-        f"{STUDENT_MANAGE_URL}?{urllib.parse.urlencode({'email': email})}"
+        f"{STUDENT_MANAGE_URL}?{urllib.parse.urlencode(manage_params)}"
     )
+    unsub_params = {**manage_params, "mode": "unsubscribe"}
     config["subscription_unsubscribe_url"] = (
-        f"{STUDENT_MANAGE_URL}?{urllib.parse.urlencode({'email': email, 'mode': 'unsubscribe'})}"
+        f"{STUDENT_MANAGE_URL}?{urllib.parse.urlencode(unsub_params)}"
     )
     labels = [package_labels()[package_id] for package_id in subscription["package_ids"]]
     config["tagline"] = "Selected packages: " + ", ".join(labels)
