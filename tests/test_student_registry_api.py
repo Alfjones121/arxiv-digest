@@ -15,6 +15,7 @@ SPEC.loader.exec_module(students_api)
 def test_registry_dispatch_lifecycle(monkeypatch):
     state = {"students": {}}
     saved = {}
+    confirmation_calls = []
 
     def load_registry():
         return {"students": copy.deepcopy(state["students"])}, "sha-1"
@@ -27,6 +28,11 @@ def test_registry_dispatch_lifecycle(monkeypatch):
     monkeypatch.setattr(students_api, "_load_registry", load_registry)
     monkeypatch.setattr(students_api, "_save_registry", save_registry)
     monkeypatch.setattr(students_api, "STUDENT_ADMIN_TOKEN", "admin-secret")
+    monkeypatch.setattr(
+        students_api,
+        "_send_subscription_confirmation",
+        lambda subscription, event: confirmation_calls.append((subscription["email"], event)) or (True, None),
+    )
 
     status, payload = students_api._dispatch(
         {
@@ -41,6 +47,9 @@ def test_registry_dispatch_lifecycle(monkeypatch):
     assert status == 200
     assert payload["subscription"]["email"] == "student@example.com"
     assert saved["message"] == "Update student subscription for student@example.com"
+    assert payload["subscription_event"] == "created"
+    assert payload["confirmation_email_sent"] is True
+    assert confirmation_calls == [("student@example.com", "created")]
 
     with pytest.raises(PermissionError):
         students_api._handle_get(
@@ -61,6 +70,8 @@ def test_registry_dispatch_lifecycle(monkeypatch):
     assert status == 200
     assert payload["subscription"]["package_ids"] == ["stars", "galaxies"]
     assert payload["subscription"]["max_papers_per_week"] == 3
+    assert payload["subscription_event"] == "updated"
+    assert payload["confirmation_email_sent"] is False
 
     with pytest.raises(PermissionError):
         students_api._handle_get(
@@ -95,6 +106,27 @@ def test_registry_dispatch_lifecycle(monkeypatch):
 
     status, payload = students_api._dispatch(
         {
+            "action": "upsert",
+            "email": "student@example.com",
+            "password": "new-password",
+            "package_ids": ["stars"],
+            "max_papers_per_week": 4,
+        }
+    )
+    assert status == 200
+    assert payload["subscription_event"] == "resubscribed"
+    assert payload["confirmation_email_sent"] is True
+    assert confirmation_calls[-1] == ("student@example.com", "resubscribed")
+
+    status, payload = students_api._dispatch(
+        {"action": "admin_list", "admin_token": "admin-secret"}
+    )
+    assert status == 200
+    assert len(payload["subscriptions"]) == 1
+    assert payload["subscriptions"][0]["active"] is True
+
+    status, payload = students_api._dispatch(
+        {
             "action": "admin_list",
             "admin_token": "admin-secret",
             "include_inactive": True,
@@ -102,7 +134,7 @@ def test_registry_dispatch_lifecycle(monkeypatch):
     )
     assert status == 200
     assert len(payload["subscriptions"]) == 1
-    assert payload["subscriptions"][0]["active"] is False
+    assert payload["subscriptions"][0]["active"] is True
 
 
 def test_manage_page_includes_password_rotation_field():
@@ -118,3 +150,4 @@ def test_manage_page_includes_password_rotation_field():
     assert "Enter your password and click Unsubscribe." in page
     assert 'const initialPackages = ["stars", "galaxies"]' in page
     assert "const initialMaxPapers = 4" in page
+    assert "A confirmation email has been sent." in page

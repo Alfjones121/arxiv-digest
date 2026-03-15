@@ -6,9 +6,12 @@ import base64
 import html
 import json
 import os
+import smtplib
 import urllib.error
 import urllib.parse
 import urllib.request
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 
@@ -36,6 +39,12 @@ STORAGE_REPO = os.environ.get("STUDENT_STORAGE_REPO", "").strip()
 STORAGE_PATH = os.environ.get("STUDENT_STORAGE_PATH", "students/subscriptions.json").strip()
 STORAGE_BRANCH = os.environ.get("STUDENT_STORAGE_BRANCH", "main").strip()
 STUDENT_ADMIN_TOKEN = os.environ.get("STUDENT_ADMIN_TOKEN", "").strip()
+SMTP_USER = os.environ.get("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "").strip()
+PUBLIC_STUDENT_MANAGE_URL = os.environ.get(
+    "PUBLIC_STUDENT_MANAGE_URL",
+    "https://arxiv-digest-relay.vercel.app/api/students",
+).strip()
 
 
 def _github_request(method: str, url: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -98,10 +107,78 @@ def _require_admin_token(token: str) -> None:
         raise PermissionError("Invalid admin token.")
 
 
+def _build_manage_url(email: str) -> str:
+    """Return the public manage-page URL for a student subscription."""
+    return (
+        f"{PUBLIC_STUDENT_MANAGE_URL.rstrip('?')}"
+        f"?{urllib.parse.urlencode({'email': email})}"
+    )
+
+
+def _send_subscription_confirmation(
+    subscription: dict[str, Any],
+    *,
+    event: str,
+) -> tuple[bool, str | None]:
+    """Send an immediate confirmation email for a new or reactivated subscription."""
+    if not SMTP_USER or not SMTP_PASSWORD:
+        return False, "confirmation mail is not configured on the relay"
+
+    email = subscription["email"]
+    package_text = ", ".join(package_labels()[package_id] for package_id in subscription["package_ids"])
+    manage_url = _build_manage_url(email)
+    action_text = (
+        "Your AU student digest subscription is active again."
+        if event == "resubscribed"
+        else "Your AU student digest subscription is active."
+    )
+    subject = "AU student digest subscription confirmed"
+    plain_text = (
+        f"{action_text}\n\n"
+        f"Email: {email}\n"
+        f"Packages: {package_text}\n"
+        f"Max papers per week: {subscription['max_papers_per_week']}\n\n"
+        f"Manage your subscription: {manage_url}\n"
+    )
+    html_body = f"""<!doctype html>
+<html lang="en">
+  <body style="font-family:Arial,sans-serif;color:#1f2933;line-height:1.6">
+    <h2 style="margin:0 0 12px">AU student digest subscription confirmed</h2>
+    <p>{html.escape(action_text)}</p>
+    <p><strong>Email:</strong> {html.escape(email)}<br>
+       <strong>Packages:</strong> {html.escape(package_text)}<br>
+       <strong>Max papers per week:</strong> {subscription['max_papers_per_week']}</p>
+    <p><a href="{html.escape(manage_url)}">Manage your subscription</a></p>
+  </body>
+</html>"""
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"arXiv Digest <{SMTP_USER}>"
+    msg["To"] = email
+    msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_USER, [email], msg.as_bytes())
+        return True, None
+    except smtplib.SMTPAuthenticationError:
+        return False, "relay SMTP authentication failed"
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _handle_upsert(body: dict[str, Any]) -> dict[str, Any]:
     email = normalise_email(body.get("email", ""))
     registry, sha = _load_registry()
     existing = registry["students"].get(email)
+    is_reactivation = bool(existing) and not bool(existing.get("active", True))
+    is_new_subscription = existing is None
     record = build_student_record(
         email=email,
         password=str(body.get("password", "")),
@@ -112,7 +189,28 @@ def _handle_upsert(body: dict[str, Any]) -> dict[str, Any]:
     )
     registry["students"][email] = record
     _save_registry(registry, sha, f"Update student subscription for {email}")
-    return {"ok": True, "subscription": public_record(record), "package_labels": package_labels()}
+    subscription = public_record(record)
+
+    confirmation_sent = False
+    confirmation_error: str | None = None
+    subscription_event = "created" if is_new_subscription else "updated"
+    if is_reactivation:
+        subscription_event = "resubscribed"
+
+    if is_new_subscription or is_reactivation:
+        confirmation_sent, confirmation_error = _send_subscription_confirmation(
+            subscription,
+            event=subscription_event,
+        )
+
+    return {
+        "ok": True,
+        "subscription": subscription,
+        "package_labels": package_labels(),
+        "subscription_event": subscription_event,
+        "confirmation_email_sent": confirmation_sent,
+        "confirmation_email_error": confirmation_error,
+    }
 
 
 def _handle_get(body: dict[str, Any]) -> dict[str, Any]:
@@ -389,7 +487,13 @@ def _manage_page(
           setPackages(data.subscription.package_ids);
           document.getElementById("max_papers").value = data.subscription.max_papers_per_week;
           document.getElementById("new_password").value = "";
-          setStatus("Saved. Your next weekly digest will use these packages.");
+          if (data.confirmation_email_sent) {{
+            setStatus("Saved. A confirmation email has been sent.");
+          }} else if (data.confirmation_email_error) {{
+            setStatus("Saved, but the confirmation email could not be sent: " + data.confirmation_email_error, true);
+          }} else {{
+            setStatus("Saved. Your next weekly digest will use these packages.");
+          }}
         }} catch (error) {{
           setStatus(error.message, true);
         }}
