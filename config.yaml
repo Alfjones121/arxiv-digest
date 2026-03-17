@@ -1,0 +1,36 @@
+digest_name: arXiv Digest
+researcher_name: Reader
+research_context: ''
+categories:
+- cond-mat.mtrl-sci
+- cond-mat.str-el
+- cond-mat.supr-con
+- physics.acc-ph
+keywords:
+  2D devices: 8
+  2D heterostructures: 8
+  ARPES: 8
+  nanoARPES: 8
+  2D materials: 7
+  MicroARPES: 7
+  Twisted bilayer graphene: 7
+  graphene: 5
+  Photemission: 4
+  Kagome: 3
+self_match: []
+research_authors:
+- Matt Watson
+colleagues:
+  people: []
+  institutions: []
+digest_mode: in_depth
+recipient_view_mode: deep_read
+days_back: 4
+schedule: mon_wed_fri
+send_hour_utc: 7
+institution: ''
+department: ''
+tagline: ''
+smtp_server: smtp.gmail.com
+smtp_port: 587
+github_repo: ''
