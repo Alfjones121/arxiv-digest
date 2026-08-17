@@ -257,51 +257,51 @@
   "2D devices": {
     "total_hits": 0,
     "last_hit": null,
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "2D heterostructures": {
     "total_hits": 5,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "ARPES": {
     "total_hits": 53,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "nanoARPES": {
     "total_hits": 0,
     "last_hit": null,
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "2D materials": {
     "total_hits": 42,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "MicroARPES": {
     "total_hits": 9,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "Twisted bilayer graphene": {
     "total_hits": 53,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "graphene": {
-    "total_hits": 357,
-    "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "total_hits": 359,
+    "last_hit": "2026-08-17",
+    "runs_checked": 61
   },
   "Photemission": {
     "total_hits": 0,
     "last_hit": null,
-    "runs_checked": 60
+    "runs_checked": 61
   },
   "Kagome": {
     "total_hits": 143,
     "last_hit": "2026-08-14",
-    "runs_checked": 60
+    "runs_checked": 61
   }
 }
